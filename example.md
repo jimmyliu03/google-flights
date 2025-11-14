@@ -148,6 +148,7 @@ return_search_tfs = create_return_flight_filter(
     outbound_flight_number=first_flight.flight_number,
     connecting_segments=connecting_segments,  # Include connecting segments if applicable
     return_date="2025-11-25",
+    max_stops=2,  # Must match the max_stops used in the original search
 )
 
 print(f"Generated return search TFS: {return_search_tfs[:50]}...\n")
@@ -191,6 +192,7 @@ except Exception as e:
 - Roundtrip searches require 2 `FlightData` entries (outbound and return dates)
 - **Connecting flights are fully supported** - the library automatically encodes all flight segments
 - Use `create_return_flight_filter()` to generate TFS for return flight search
+- **`max_stops` parameter is required** - must match the value used in the original outbound search
 - Use `get_return_flight_options()` to fetch all return flight options with flight numbers
 - **`mode='fallback'` now returns flight numbers** - no additional setup required!
 - **TFU parameter is preserved** - pass `tfu=selected_outbound.tfu` to maintain session continuity
@@ -367,6 +369,7 @@ filter = create_filter(
     passengers=Passengers(adults=1),
     seat="economy",
     exclude_basic_economy=True,
+    max_stops=2,
 )
 
 outbound = get_flights_from_filter(filter, data_source='js')
@@ -402,6 +405,7 @@ return_tfs = create_return_flight_filter(
     outbound_flight_number=first_flight.flight_number,
     connecting_segments=connecting_segments,
     return_date="2025-11-25",
+    max_stops=2,  # Must match the max_stops used in the original search
 )
 
 return_options = get_return_flight_options(return_tfs, mode='fallback', tfu=selected.tfu)
