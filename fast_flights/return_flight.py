@@ -17,6 +17,7 @@ def create_return_flight_filter(
     return_date: str,
     location_id: str = "/m/0d6lp",  # Default Google entity ID
     connecting_segments: Optional[List[Dict[str, str]]] = None,  # For multi-leg flights
+    max_stops: Optional[int] = 2,  # Maximum number of stops per leg
 ) -> str:
     """Create a TFS filter for viewing return flights after selecting an outbound flight.
 
@@ -34,6 +35,7 @@ def create_return_flight_filter(
         connecting_segments (list, optional): Additional flight segments for connecting flights.
             Each segment should be a dict with keys: 'from', 'to', 'airline', 'flight_number'.
             Example for SFO→LAS→MCO: [{'from': 'LAS', 'to': 'MCO', 'airline': 'F9', 'flight_number': '1876'}]
+        max_stops (int, optional): Maximum number of stops to allow per leg. Defaults to 2.
 
     Returns:
         str: Base64-encoded TFS parameter for the return flight query URL.
@@ -97,12 +99,13 @@ def create_return_flight_filter(
             additional_segment.airline = segment['airline']
             additional_segment.flight_number = segment['flight_number']
 
-        # Set max_stops for connecting flights
-        outbound_leg.max_stops = len(connecting_segments)
+    # Set max_stops for both legs (unconditionally if max_stops is provided)
+    if max_stops is not None:
+        outbound_leg.max_stops = max_stops
 
     # Location filters for outbound leg
-    outbound_leg.location_filter_1.filter_type = 2
-    outbound_leg.location_filter_1.value = location_id
+    outbound_leg.location_filter_1.filter_type = 1
+    outbound_leg.location_filter_1.value = outbound_from
 
     outbound_leg.location_filter_2.filter_type = 1
     outbound_leg.location_filter_2.value = outbound_to
@@ -111,16 +114,16 @@ def create_return_flight_filter(
     return_leg = query.legs.add()
     return_leg.date = return_date
 
-    # Set max_stops for return leg (match outbound if connecting flight)
-    if connecting_segments:
-        return_leg.max_stops = len(connecting_segments)
+    # Set max_stops for return leg
+    if max_stops is not None:
+        return_leg.max_stops = max_stops
 
     # Location filters for return leg
     return_leg.location_filter_1.filter_type = 1
     return_leg.location_filter_1.value = outbound_to
 
-    return_leg.location_filter_2.filter_type = 2
-    return_leg.location_filter_2.value = location_id
+    return_leg.location_filter_2.filter_type = 1
+    return_leg.location_filter_2.value = outbound_from
 
     # Serialize and encode
     serialized = query.SerializeToString()
