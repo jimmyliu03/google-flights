@@ -5,7 +5,59 @@ import base64
 from fast_flights import create_filter, Passengers, FlightData, create_return_flight_filter, get_flights_from_filter
 
 print("=" * 80)
-print("PART 1: Initial Roundtrip Search (Outbound + Return)")
+print("PART 1: One-Way Flight Search")
+print("=" * 80)
+
+# Expected TFS values from user
+expected_oneway_exclude = "CBwQAhoeEgoyMDI1LTEyLTEwagcIARIDU0ZPcgcIARIDTUNPQAFIAXABggELCP___________wGYAQLIAQE"
+expected_oneway_include = "CBwQAhoeEgoyMDI1LTEyLTEwagcIARIDU0ZPcgcIARIDTUNPQAFIAXABggELCP___________wGYAQLIAQA"
+
+print("\nTesting one-way flight (SFO → MCO, exclude_basic_economy=True):")
+tfs_oneway_exclude = create_filter(
+    flight_data=[
+        FlightData(date="2025-12-10", from_airport="SFO", to_airport="MCO"),
+    ],
+    trip="one-way",
+    passengers=Passengers(adults=1),
+    seat="economy",
+    exclude_basic_economy=True
+)
+oneway_exclude_b64 = tfs_oneway_exclude.as_b64().decode('utf-8')
+
+print(f"Expected: {expected_oneway_exclude}")
+print(f"Actual:   {oneway_exclude_b64}")
+print(f"✓ Match: {oneway_exclude_b64 == expected_oneway_exclude}" if oneway_exclude_b64 == expected_oneway_exclude else f"✗ MISMATCH")
+
+# Decode and verify
+decoded_oneway_exclude = base64.urlsafe_b64decode(oneway_exclude_b64 + '===')
+expected_decoded_exclude = base64.urlsafe_b64decode(expected_oneway_exclude + '===')
+print(f"Expected hex: {expected_decoded_exclude.hex()}")
+print(f"Actual hex:   {decoded_oneway_exclude.hex()}")
+
+print("\nTesting one-way flight (SFO → MCO, exclude_basic_economy=False):")
+tfs_oneway_include = create_filter(
+    flight_data=[
+        FlightData(date="2025-12-10", from_airport="SFO", to_airport="MCO"),
+    ],
+    trip="one-way",
+    passengers=Passengers(adults=1),
+    seat="economy",
+    exclude_basic_economy=False
+)
+oneway_include_b64 = tfs_oneway_include.as_b64().decode('utf-8')
+
+print(f"Expected: {expected_oneway_include}")
+print(f"Actual:   {oneway_include_b64}")
+print(f"✓ Match: {oneway_include_b64 == expected_oneway_include}" if oneway_include_b64 == expected_oneway_include else f"✗ MISMATCH")
+
+# Decode and verify
+decoded_oneway_include = base64.urlsafe_b64decode(oneway_include_b64 + '===')
+expected_decoded_include = base64.urlsafe_b64decode(expected_oneway_include + '===')
+print(f"Expected hex: {expected_decoded_include.hex()}")
+print(f"Actual hex:   {decoded_oneway_include.hex()}")
+
+print("\n" + "=" * 80)
+print("PART 2: Initial Roundtrip Search (Outbound + Return)")
 print("=" * 80)
 
 # Test data from user's URLs
@@ -60,7 +112,7 @@ print(f"Expected hex: {expected_bytes_without.hex()}")
 print(f"Actual hex:   {actual_bytes_without.hex()}")
 
 print("\n" + "=" * 80)
-print("PART 2: Fetching Real Outbound Flights")
+print("PART 3: Fetching Real Outbound Flights")
 print("=" * 80)
 
 print("\nFetching real flights WITH basic economy (exclude_basic_economy=False)...")
@@ -98,7 +150,7 @@ except Exception as e:
     first_flight_without = None
 
 print("\n" + "=" * 80)
-print("PART 3: Return Flight Selection (Using Real Outbound Flight)")
+print("PART 4: Return Flight Selection (Using Real Outbound Flight)")
 print("=" * 80)
 
 # Test with basic economy (using real flight data)
@@ -216,8 +268,10 @@ else:
 print("\n" + "=" * 80)
 print("SUMMARY")
 print("=" * 80)
-print(f"Initial search (with basic):     {'✓ PASS' if actual_with == expected_with_basic else '✗ FAIL'}")
-print(f"Initial search (exclude basic):  {'✓ PASS' if actual_without == expected_without_basic else '✗ FAIL'}")
+print(f"One-way (exclude basic):         {'✓ PASS' if oneway_exclude_b64 == expected_oneway_exclude else '✗ FAIL'}")
+print(f"One-way (include basic):         {'✓ PASS' if oneway_include_b64 == expected_oneway_include else '✗ FAIL'}")
+print(f"Roundtrip (with basic):          {'✓ PASS' if actual_with == expected_with_basic else '✗ FAIL'}")
+print(f"Roundtrip (exclude basic):       {'✓ PASS' if actual_without == expected_without_basic else '✗ FAIL'}")
 if has_field_25_with is not None:
     print(f"Return flight (with basic):      {'✓ PASS' if not has_field_25_with else '✗ FAIL'}")
 else:

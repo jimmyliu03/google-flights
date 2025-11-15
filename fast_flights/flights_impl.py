@@ -151,7 +151,14 @@ class TFSData:
 
         # Set required root fields
         info.field_1 = 28  # Always 28
-        info.trip = self.trip  # Trip type at field 2 (moved from field 19)
+
+        # Google uses non-standard trip values: 2 for both one-way and round-trip
+        # This doesn't match the protobuf enum (ONE_WAY=1, ROUND_TRIP=2)
+        if self.trip == PB.Trip.ONE_WAY:
+            info.trip = 2  # Google expects 2 for one-way (not 1)
+        else:
+            info.trip = self.trip  # ROUND_TRIP is already 2
+
         info.seat = self.seat
         info.field_14 = 1  # Always 1
 
@@ -166,20 +173,21 @@ class TFSData:
                 flight.max_stops = self.max_stops
 
         # Manually construct field_16 bytes (Google uses non-standard protobuf format)
-        # The structure doesn't map cleanly to standard protobuf messages
+        # Both one-way and round-trip use the same 11-byte format
+        info.field_16 = bytes([0x08, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01])
+
+        # Set field_19: 1 for round-trip, 2 for one-way
         if self.trip == PB.Trip.ROUND_TRIP:
-            # Roundtrip format (11 bytes): 08 ff ff ff ff ff ff ff ff ff 01
-            # This appears to be a varint field with all bits set
-            info.field_16 = bytes([0x08, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01])
+            info.field_19 = 1
         else:  # ONE_WAY or MULTI_CITY
-            # One-way format: just 08 01
-            info.field_16 = bytes([0x08, 0x01])
+            info.field_19 = 2
 
-        # Set field_19 (always 1)
-        info.field_19 = 1
-
-        # Set field_25 (exclude_basic_economy) at root level
-        if self.exclude_basic_economy:
+        # Set field_25 (exclude_basic_economy)
+        # - For ONE_WAY: always set (0 to include basic, 1 to exclude)
+        # - For ROUND_TRIP: only set when excluding (1), omit when including
+        if self.trip == PB.Trip.ONE_WAY:
+            info.exclude_basic_economy = 1 if self.exclude_basic_economy else 0
+        elif self.exclude_basic_economy:
             info.exclude_basic_economy = 1
 
         return info
