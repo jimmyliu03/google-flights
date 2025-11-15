@@ -18,6 +18,7 @@ def create_return_flight_filter(
     location_id: str = "/m/0d6lp",  # Default Google entity ID
     connecting_segments: Optional[List[Dict[str, str]]] = None,  # For multi-leg flights
     max_stops: Optional[int] = 2,  # Maximum number of stops per leg
+    exclude_basic_economy: bool = False,  # Should match the outbound search setting
 ) -> str:
     """Create a TFS filter for viewing return flights after selecting an outbound flight.
 
@@ -36,6 +37,8 @@ def create_return_flight_filter(
             Each segment should be a dict with keys: 'from', 'to', 'airline', 'flight_number'.
             Example for SFO→LAS→MCO: [{'from': 'LAS', 'to': 'MCO', 'airline': 'F9', 'flight_number': '1876'}]
         max_stops (int, optional): Maximum number of stops to allow per leg. Defaults to 2.
+        exclude_basic_economy (bool, optional): Exclude basic economy fares. Should match the setting
+            used in the initial outbound search. Defaults to False.
 
     Returns:
         str: Base64-encoded TFS parameter for the return flight query URL.
@@ -76,6 +79,10 @@ def create_return_flight_filter(
 
     # Set field_16 (contains -1 as sint64)
     query.field_16.value = -1
+
+    # Set field_25 (exclude_basic_economy) if needed
+    if exclude_basic_economy:
+        query.field_25 = 1
 
     # First leg: Outbound flight with selection
     outbound_leg = query.legs.add()
@@ -125,9 +132,9 @@ def create_return_flight_filter(
     return_leg.location_filter_2.filter_type = 1
     return_leg.location_filter_2.value = outbound_from
 
-    # Serialize and encode
+    # Serialize and encode using URL-safe base64 without padding (matches Google Flights format)
     serialized = query.SerializeToString()
-    encoded = base64.b64encode(serialized).decode('utf-8')
+    encoded = base64.urlsafe_b64encode(serialized).rstrip(b'=').decode('utf-8')
 
     return encoded
 
