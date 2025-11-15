@@ -66,8 +66,16 @@ class FlightData:
     def attach(self, info: PB.Info) -> None:  # type: ignore
         data = info.data.add()
         data.date = self.date
+
+        # Set airport type based on format
+        # Type 2 = Knowledge Graph ID (starts with "/m/")
+        # Type 1 = IATA code (3-letter code)
+        data.from_flight.airport_type = 2 if self.from_airport.startswith("/m/") else 1
         data.from_flight.airport = self.from_airport
+
+        data.to_flight.airport_type = 2 if self.to_airport.startswith("/m/") else 1
         data.to_flight.airport = self.to_airport
+
         if self.max_stops is not None:
             data.max_stops = self.max_stops
         if self.airlines is not None:
@@ -140,8 +148,12 @@ class TFSData:
 
     def pb(self) -> PB.Info:  # type: ignore
         info = PB.Info()
+
+        # Set required root fields
+        info.field_1 = 28  # Always 28
+        info.trip = self.trip  # Trip type at field 2 (moved from field 19)
         info.seat = self.seat
-        info.trip = self.trip
+        info.field_14 = 1  # Always 1
 
         self.passengers.attach(info)
 
@@ -153,8 +165,22 @@ class TFSData:
             for flight in info.data:
                 flight.max_stops = self.max_stops
 
-        # Set exclude_basic_economy field (0 = don't exclude, 1 = exclude)
-        info.exclude_basic_economy = 1 if self.exclude_basic_economy else 0
+        # Manually construct field_16 bytes (Google uses non-standard protobuf format)
+        # The structure doesn't map cleanly to standard protobuf messages
+        if self.trip == PB.Trip.ROUND_TRIP:
+            # Roundtrip format (11 bytes): 08 ff ff ff ff ff ff ff ff ff 01
+            # This appears to be a varint field with all bits set
+            info.field_16 = bytes([0x08, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01])
+        else:  # ONE_WAY or MULTI_CITY
+            # One-way format: just 08 01
+            info.field_16 = bytes([0x08, 0x01])
+
+        # Set field_19 (always 1)
+        info.field_19 = 1
+
+        # Set field_25 (exclude_basic_economy) at root level
+        if self.exclude_basic_economy:
+            info.exclude_basic_economy = 1
 
         return info
 
@@ -162,7 +188,8 @@ class TFSData:
         return self.pb().SerializeToString()
 
     def as_b64(self) -> bytes:
-        return base64.b64encode(self.to_string())
+        # Use URL-safe base64 encoding without padding (as used by Google Flights)
+        return base64.urlsafe_b64encode(self.to_string()).rstrip(b'=')
 
     @staticmethod
     def from_interface(

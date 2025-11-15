@@ -35,7 +35,8 @@ class Cookies:
         return self.pb().SerializeToString()
 
     def as_b64(self) -> bytes:
-        return base64.b64encode(self.to_string())
+        # Use URL-safe base64 encoding without padding (as used by Google Flights)
+        return base64.urlsafe_b64encode(self.to_string()).rstrip(b'=')
 
     def to_dict(self) -> dict:
         return {"CONSENT": "PENDING+987", "SOCS": self.as_b64().decode("utf-8")}

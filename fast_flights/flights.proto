@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 message Airport {
+  int32 airport_type = 1;  // 1=IATA code, 2=Knowledge Graph ID (e.g., "/m/...")
   string airport = 2;
 }
 
@@ -22,8 +23,8 @@ enum Seat {
 
 enum Trip {
   UNKNOWN_TRIP = 0;
-  ROUND_TRIP = 1;
-  ONE_WAY = 2;
+  ONE_WAY = 1;
+  ROUND_TRIP = 2;
   MULTI_CITY = 3; // not implemented
 }
 
@@ -36,11 +37,15 @@ enum Passenger {
 }
 
 message Info {
+  int32 field_1 = 1;  // Always 28
+  Trip trip = 2;  // Trip type
   repeated FlightData data = 3;
+  repeated Passenger passengers = 8 [packed = false];  // Google uses unpacked encoding
   Seat seat = 9;
-  repeated Passenger passengers = 8;
-  Trip trip = 19;
-  optional int32 exclude_basic_economy = 25;
+  int32 field_14 = 14;  // Always 1
+  bytes field_16 = 16;  // Raw bytes for complex filter settings (Google's format is non-standard)
+  int32 field_19 = 19;  // Trip-related field (1 or 2, changes with exclude_basic_economy)
+  optional int32 exclude_basic_economy = 25;  // 0 or 1
 }
 
 message Price {
