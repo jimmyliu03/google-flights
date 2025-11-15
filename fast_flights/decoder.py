@@ -33,6 +33,23 @@ class NLData(Sequence[NLBaseType]):
     def __len__(self) -> int:
         return len(self.data)
 
+def normalize_time(data: NLData) -> List[int]:
+    """
+    Normalize time data to always have [hour, minute] format.
+    Google sometimes returns [hour] without minutes, or [hour, 0] where 0 gets filtered.
+    This ensures we always have a 2-element list with hour and minute.
+    """
+    if isinstance(data.data, list):
+        # Ensure we have at least 2 elements
+        time_list = list(data.data)
+        # Pad with 0s if needed (for hour or minute)
+        while len(time_list) < 2:
+            time_list.append(0)
+        # Return only first 2 elements [hour, minute]
+        return [time_list[0] if time_list[0] is not None else 0,
+                time_list[1] if time_list[1] is not None else 0]
+    return [0, 0]  # Default fallback
+
 # DecoderKey is used to specify the path to a field from a decoder class
 V = TypeVar('V')
 @dataclass
@@ -160,8 +177,8 @@ class FlightDecoder(Decoder):
     ARRIVAL_AIRPORT_NAME: DecoderKey[AirportName] = DecoderKey([6])
     # SOME_ENUM: DecoderKey[int] = DecoderKey([7])
     # SOME_ENUM: DecoderKey[int] = DecoderKey([9])
-    DEPARTURE_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([8])
-    ARRIVAL_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([10])
+    DEPARTURE_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([8], normalize_time)
+    ARRIVAL_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([10], normalize_time)
     TRAVEL_TIME: DecoderKey[int] = DecoderKey([11])
     SEAT_PITCH_SHORT: DecoderKey[str] = DecoderKey([14])
     AIRCRAFT: DecoderKey[str] = DecoderKey([17])
@@ -198,10 +215,10 @@ class ItineraryDecoder(Decoder):
     FLIGHTS: DecoderKey[List[Flight]] = DecoderKey([0, 2], FlightDecoder.decode)
     DEPARTURE_AIRPORT: DecoderKey[AirportCode] = DecoderKey([0, 3])
     DEPARTURE_DATE: DecoderKey[Tuple[int, int, int]] = DecoderKey([0, 4])
-    DEPARTURE_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([0, 5])
+    DEPARTURE_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([0, 5], normalize_time)
     ARRIVAL_AIRPORT: DecoderKey[AirportCode] = DecoderKey([0, 6])
     ARRIVAL_DATE: DecoderKey[Tuple[int, int, int]] = DecoderKey([0, 7])
-    ARRIVAL_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([0, 8])
+    ARRIVAL_TIME: DecoderKey[Tuple[int, int]] = DecoderKey([0, 8], normalize_time)
     TRAVEL_TIME: DecoderKey[int] = DecoderKey([0, 9])
     # UNKNOWN: DecoderKey[int] = DecoderKey([0, 10])
     LAYOVERS: DecoderKey[List[Layover]] = DecoderKey([0, 13], LayoverDecoder.decode)
