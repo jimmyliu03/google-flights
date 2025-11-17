@@ -31,7 +31,7 @@ filter = create_filter(
 )
 
 # Fetch flights using JS data source to get detailed information including flight numbers
-result = get_flights_from_filter(filter, data_source='js')
+result = get_flights_from_filter(filter, data_source='js', mode='fallback')
 
 # Display flight results
 if result is not None:
@@ -59,6 +59,7 @@ if result is not None:
 **Key Points:**
 - Set `exclude_basic_economy=True` to filter out basic economy fares
 - Use `data_source='js'` to get detailed flight information including flight numbers
+- Use `mode='fallback'` for best reliability
 - Access individual flight details through `itinerary.flights[0]` for the first segment
 - Multi-leg flights have multiple entries in `itinerary.flights`
 
@@ -90,10 +91,11 @@ filter = create_filter(
     trip="round-trip",
     passengers=Passengers(adults=1),
     seat="economy",
+    exclude_basic_economy=False,
     max_stops=2,
 )
 
-outbound_results = get_flights_from_filter(filter, data_source='js')
+outbound_results = get_flights_from_filter(filter, data_source='js', mode='fallback')
 
 if outbound_results is None or len(outbound_results.best) == 0:
     print("No outbound flights found!")
@@ -115,7 +117,8 @@ print(f"Type: {'Direct flight' if len(selected_outbound.flights) == 1 else f'Con
 # Show all legs for connecting flights
 if len(selected_outbound.flights) > 1:
     for i, f in enumerate(selected_outbound.flights, 1):
-        print(f"  Leg {i}: {f.airline} {f.flight_number} ({f.departure_airport} → {f.arrival_airport})")
+        dep_date = f"{f.departure_date[0]}-{f.departure_date[1]:02d}-{f.departure_date[2]:02d}"
+        print(f"  Leg {i}: {f.airline} {f.flight_number} ({f.departure_airport} → {f.arrival_airport}) on {dep_date}")
 
 print(f"Date: {first_flight.departure_date[0]}-{first_flight.departure_date[1]:02d}-{first_flight.departure_date[2]:02d}")
 print(f"Price: ${selected_outbound.itinerary_summary.price:.2f}")
@@ -126,6 +129,7 @@ print("Step 3: Generating return flight search")
 print("-" * 80)
 
 # Build connecting_segments list if this is a multi-leg flight
+# IMPORTANT: Include the 'date' field for segments that depart on different dates
 connecting_segments = None
 if len(selected_outbound.flights) > 1:
     connecting_segments = []
@@ -138,6 +142,7 @@ if len(selected_outbound.flights) > 1:
             'to': to_airport,
             'airline': segment.airline,
             'flight_number': segment.flight_number,
+            'date': f"{segment.departure_date[0]}-{segment.departure_date[1]:02d}-{segment.departure_date[2]:02d}",  # Include departure date
         })
 
 return_search_tfs = create_return_flight_filter(
@@ -146,8 +151,10 @@ return_search_tfs = create_return_flight_filter(
     outbound_to=selected_outbound.arrival_airport,
     outbound_airline=first_flight.airline,
     outbound_flight_number=first_flight.flight_number,
-    connecting_segments=connecting_segments,  # Include connecting segments if applicable
+    connecting_segments=connecting_segments,  # Include connecting segments with dates if applicable
     return_date="2025-11-25",
+    seat="economy",  # MUST match the seat class from the original search
+    exclude_basic_economy=False,  # MUST match the exclude_basic_economy from the original search
     max_stops=2,  # Must match the max_stops used in the original search
 )
 
@@ -191,7 +198,9 @@ except Exception as e:
 **Key Points:**
 - Roundtrip searches require 2 `FlightData` entries (outbound and return dates)
 - **Connecting flights are fully supported** - the library automatically encodes all flight segments
-- Use `create_return_flight_filter()` to generate TFS for return flight search
+- **Include the `date` field** in `connecting_segments` for flights that depart on different dates (e.g., overnight connections)
+- **The `seat` parameter is required** in `create_return_flight_filter()` and must match the original search
+- **The `exclude_basic_economy` parameter is required** and must match the original search
 - **`max_stops` parameter is required** - must match the value used in the original outbound search
 - Use `get_return_flight_options()` to fetch all return flight options with flight numbers
 - **`mode='fallback'` now returns flight numbers** - no additional setup required!
@@ -199,7 +208,85 @@ except Exception as e:
 
 ---
 
-## Example 3: Decoding TFS Strings
+## Example 3: Business Class Roundtrip with Overnight Connection
+
+Search for business class flights with overnight connections, ensuring dates are properly encoded.
+
+```python
+from fast_flights import (
+    create_filter,
+    get_flights_from_filter,
+    create_return_flight_filter,
+    FlightData,
+    Passengers,
+)
+
+# Search for business class roundtrip
+filter = create_filter(
+    flight_data=[
+        FlightData(date="2026-02-05", from_airport="SFO", to_airport="IST"),
+        FlightData(date="2026-02-18", from_airport="IST", to_airport="SFO"),
+    ],
+    trip="round-trip",
+    passengers=Passengers(adults=1),
+    seat="business",  # Business class
+    exclude_basic_economy=False,
+)
+
+result = get_flights_from_filter(filter, data_source='js', mode='fallback')
+
+if result and len(result.best) > 0:
+    selected = result.best[0]
+    first_flight = selected.flights[0]
+
+    print(f"Selected: {selected.airline_names[0]} {first_flight.flight_number}")
+    print(f"Price: ${selected.itinerary_summary.price:.2f}")
+
+    # Handle overnight connections - note the date field!
+    connecting_segments = None
+    if len(selected.flights) > 1:
+        connecting_segments = []
+        for i in range(1, len(selected.flights)):
+            segment = selected.flights[i]
+            to_airport = selected.flights[i+1].departure_airport if i+1 < len(selected.flights) else selected.arrival_airport
+
+            # Example: LH 1300 departs Feb 6 (next day), not Feb 5
+            segment_date = f"{segment.departure_date[0]}-{segment.departure_date[1]:02d}-{segment.departure_date[2]:02d}"
+
+            connecting_segments.append({
+                'from': segment.departure_airport,
+                'to': to_airport,
+                'airline': segment.airline,
+                'flight_number': segment.flight_number,
+                'date': segment_date,  # Critical for overnight connections!
+            })
+            print(f"  Connecting: {segment.airline} {segment.flight_number} on {segment_date}")
+
+    # Generate return flight search
+    return_tfs = create_return_flight_filter(
+        outbound_date=f"{first_flight.departure_date[0]}-{first_flight.departure_date[1]:02d}-{first_flight.departure_date[2]:02d}",
+        outbound_from=selected.departure_airport,
+        outbound_to=selected.arrival_airport,
+        outbound_airline=first_flight.airline,
+        outbound_flight_number=first_flight.flight_number,
+        connecting_segments=connecting_segments,
+        return_date="2026-02-18",
+        seat="business",  # Must match original search!
+        exclude_basic_economy=False,
+    )
+
+    print(f"\nReturn TFS: {return_tfs[:50]}...")
+```
+
+**Key Points:**
+- **Overnight connections require the `date` field** - each segment may depart on a different date
+- If `date` is omitted, the library falls back to `outbound_date` for backward compatibility
+- The `seat` parameter in `create_return_flight_filter()` must match the original search ("business" in this case)
+- Business class searches require `seat="business"` in both the initial filter and return flight filter
+
+---
+
+## Example 4: Decoding TFS Strings
 
 Decode a TFS string to see which flights are selected in a roundtrip booking.
 
@@ -218,12 +305,12 @@ try:
 
     print(f"\n  Outbound Flight Segments:")
     for i, segment in enumerate(decoded['outbound_segments'], 1):
-        print(f"    {i}. {segment['airline']} {segment['flight_number']}: {segment['from_airport']} → {segment['to_airport']}")
+        print(f"    {i}. {segment['airline']} {segment['flight_number']}: {segment['from_airport']} → {segment['to_airport']} on {segment['date']}")
 
     if decoded['return_segments']:
         print(f"\n  Return Flight Segments:")
         for i, segment in enumerate(decoded['return_segments'], 1):
-            print(f"    {i}. {segment['airline']} {segment['flight_number']}: {segment['from_airport']} → {segment['to_airport']}")
+            print(f"    {i}. {segment['airline']} {segment['flight_number']}: {segment['from_airport']} → {segment['to_airport']} on {segment['date']}")
     else:
         print(f"\n  Return Flight: Not yet selected")
 
@@ -240,8 +327,8 @@ Decoded TFS:
   Step: 2
 
   Outbound Flight Segments:
-    1. F9 4158: SFO → LAS
-    2. F9 1876: LAS → MCO
+    1. F9 4158: SFO → LAS on 2025-11-18
+    2. F9 1876: LAS → MCO on 2025-11-18
 
   Return Flight: Not yet selected
 
@@ -251,13 +338,14 @@ Decoded TFS:
 **Key Points:**
 - `decode_return_flight_tfs()` decodes the protobuf data in TFS strings
 - **Now returns `outbound_segments` and `return_segments` arrays** for multi-leg flights
+- Each segment includes the departure `date` field
 - Maintains backward compatibility with single `outbound` and `return` dicts
 - `step=2` indicates a return flight selection page
 - Useful for debugging or extracting flight details from URLs
 
 ---
 
-## Example 4: Direct Flight-Only Search
+## Example 5: Direct Flight-Only Search
 
 If you only want direct flights (no connections), filter for single-leg itineraries:
 
@@ -275,7 +363,7 @@ filter = create_filter(
     max_stops=0,  # Direct flights only
 )
 
-result = get_flights_from_filter(filter, data_source='js')
+result = get_flights_from_filter(filter, data_source='js', mode='fallback')
 
 # Filter for direct flights only
 direct_flights = [itin for itin in result.best if len(itin.flights) == 1]
@@ -339,9 +427,11 @@ The `mode` parameter controls how pages are fetched:
 | `bright-data` | Uses Bright Data proxy service | Production (requires BRIGHT_DATA_API_KEY) |
 
 **Recommendations:**
-- **For outbound flights:** Use `data_source='js'` with `mode='common'` (or `mode='fallback'` for maximum reliability)
+- **For outbound flights:** Use `data_source='js'` with `mode='fallback'` for maximum reliability
 - **For return flights:** Use `mode='fallback'` (now returns flight numbers!)
 - **TFU parameter:** Always pass `tfu=selected_outbound.tfu` to return flight functions
+- **Seat class:** Always pass `seat=` to match your initial search
+- **Exclude basic economy:** Always pass `exclude_basic_economy=` to match your initial search
 
 ---
 
@@ -372,7 +462,7 @@ filter = create_filter(
     max_stops=2,
 )
 
-outbound = get_flights_from_filter(filter, data_source='js')
+outbound = get_flights_from_filter(filter, data_source='js', mode='fallback')
 
 # Step 2: Select an outbound flight (direct or connecting)
 selected = outbound.best[0]
@@ -382,7 +472,7 @@ print(f"Selected outbound: {selected.airline_names[0]} {first_flight.flight_numb
 print(f"Price: ${selected.itinerary_summary.price:.2f}")
 print(f"Type: {'Direct' if len(selected.flights) == 1 else f'{len(selected.flights)}-leg connecting'}")
 
-# Step 3: Build connecting segments if needed
+# Step 3: Build connecting segments if needed (with dates!)
 connecting_segments = None
 if len(selected.flights) > 1:
     connecting_segments = []
@@ -394,6 +484,7 @@ if len(selected.flights) > 1:
             'to': to_airport,
             'airline': segment.airline,
             'flight_number': segment.flight_number,
+            'date': f"{segment.departure_date[0]}-{segment.departure_date[1]:02d}-{segment.departure_date[2]:02d}",
         })
 
 # Step 4: Get return flight options
@@ -405,7 +496,9 @@ return_tfs = create_return_flight_filter(
     outbound_flight_number=first_flight.flight_number,
     connecting_segments=connecting_segments,
     return_date="2025-11-25",
-    max_stops=2,  # Must match the max_stops used in the original search
+    seat="economy",  # Must match original search
+    exclude_basic_economy=True,  # Must match original search
+    max_stops=2,  # Must match original search
 )
 
 return_options = get_return_flight_options(return_tfs, mode='fallback', tfu=selected.tfu)
@@ -424,7 +517,7 @@ Always handle potential errors when fetching flights:
 
 ```python
 try:
-    result = get_flights_from_filter(filter, data_source='js')
+    result = get_flights_from_filter(filter, data_source='js', mode='fallback')
 
     if result is None:
         print("No flights found")
@@ -451,8 +544,55 @@ except Exception as e:
 
 ---
 
+## Important Parameter Requirements
+
+### Required Parameters for Return Flights
+
+When calling `create_return_flight_filter()`, the following parameters **must match** the original outbound search:
+
+1. **`seat`** - Must be the same seat class ("economy", "premium-economy", "business", or "first")
+2. **`exclude_basic_economy`** - Must match whether basic economy was excluded in the original search
+3. **`max_stops`** - Must match the max_stops value from the original search
+
+**Example:**
+```python
+# Original search
+filter = create_filter(
+    ...,
+    seat="business",
+    exclude_basic_economy=True,
+    max_stops=1,
+)
+
+# Return flight filter - parameters MUST match
+return_tfs = create_return_flight_filter(
+    ...,
+    seat="business",  # MUST match
+    exclude_basic_economy=True,  # MUST match
+    max_stops=1,  # MUST match
+)
+```
+
+### Optional Parameters for Connecting Flights
+
+When building `connecting_segments`, the `date` field is optional but **highly recommended** for overnight connections:
+
+```python
+connecting_segments.append({
+    'from': 'FRA',
+    'to': 'IST',
+    'airline': 'LH',
+    'flight_number': '1300',
+    'date': '2026-02-06',  # Optional, but critical for overnight connections!
+})
+```
+
+If omitted, the library uses `outbound_date` for all segments (backward compatible behavior).
+
+---
+
 ## Additional Resources
 
-- **GitHub Repository**: [fast-flights](https://github.com/you/fast-flights)
+- **GitHub Repository**: [fast-flights](https://github.com/jimmyliu03/google-flights)
 - **Full Documentation**: See README.md
 - **Test Scripts**: Check the `test_*.py` files for more examples
