@@ -15,6 +15,7 @@ def create_return_flight_filter(
     outbound_airline: str,
     outbound_flight_number: str,
     return_date: str,
+    seat: Literal["economy", "premium-economy", "business", "first"] = "economy",  # Must match outbound search
     location_id: str = "/m/0d6lp",  # Default Google entity ID
     connecting_segments: Optional[List[Dict[str, str]]] = None,  # For multi-leg flights
     max_stops: Optional[int] = 2,  # Maximum number of stops per leg
@@ -32,10 +33,14 @@ def create_return_flight_filter(
         outbound_airline (str): Airline code for first segment (e.g., "UA").
         outbound_flight_number (str): Flight number for first segment (e.g., "2018").
         return_date (str): Return flight date (YYYY-MM-DD format).
+        seat (str, optional): Seat class - "economy", "premium-economy", "business", or "first".
+            MUST match the seat class used in the initial outbound search. Defaults to "economy".
         location_id (str, optional): Google location entity ID. Defaults to "/m/0d6lp".
         connecting_segments (list, optional): Additional flight segments for connecting flights.
-            Each segment should be a dict with keys: 'from', 'to', 'airline', 'flight_number'.
-            Example for SFO→LAS→MCO: [{'from': 'LAS', 'to': 'MCO', 'airline': 'F9', 'flight_number': '1876'}]
+            Each segment should be a dict with keys: 'from', 'to', 'airline', 'flight_number', and optionally 'date'.
+            The 'date' field (YYYY-MM-DD format) is used when connecting flights depart on different dates.
+            If 'date' is not provided, outbound_date is used.
+            Example for SFO→LAS→MCO: [{'from': 'LAS', 'to': 'MCO', 'airline': 'F9', 'flight_number': '1876', 'date': '2025-11-18'}]
         max_stops (int, optional): Maximum number of stops to allow per leg. Defaults to 2.
         exclude_basic_economy (bool, optional): Exclude basic economy fares. Should match the setting
             used in the initial outbound search. Defaults to False.
@@ -62,7 +67,7 @@ def create_return_flight_filter(
         ...     outbound_airline="F9",
         ...     outbound_flight_number="4158",
         ...     connecting_segments=[
-        ...         {'from': 'LAS', 'to': 'MCO', 'airline': 'F9', 'flight_number': '1876'}
+        ...         {'from': 'LAS', 'to': 'MCO', 'airline': 'F9', 'flight_number': '1876', 'date': '2025-11-18'}
         ...     ],
         ...     return_date="2025-11-25"
         ... )
@@ -73,12 +78,21 @@ def create_return_flight_filter(
     query.query_type = 28
     query.step = 2
     query.field_8 = 1
-    query.field_9 = 1
     query.field_14 = 1
     query.field_19 = 1
 
-    # Set field_16 (contains -1 as sint64)
+    # Map seat class string to protobuf enum
+    seat_map = {
+        "economy": PB.Seat.ECONOMY,
+        "premium-economy": PB.Seat.PREMIUM_ECONOMY,
+        "business": PB.Seat.BUSINESS,
+        "first": PB.Seat.FIRST,
+    }
+    query.seat = seat_map[seat]
+
+    # Set field_16 (contains -1 as sint64 and field_2=2)
     query.field_16.value = -1
+    query.field_16.field_2 = 2
 
     # Set field_25 (exclude_basic_economy) if needed
     if exclude_basic_economy:
@@ -101,7 +115,7 @@ def create_return_flight_filter(
         for segment in connecting_segments:
             additional_segment = outbound_leg.selected_flight.add()
             additional_segment.from_airport = segment['from']
-            additional_segment.date = outbound_date
+            additional_segment.date = segment.get('date', outbound_date)  # Use segment's date if provided
             additional_segment.to_airport = segment['to']
             additional_segment.airline = segment['airline']
             additional_segment.flight_number = segment['flight_number']
