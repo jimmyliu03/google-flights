@@ -83,6 +83,7 @@ message LegWithSelection {
 
 message UnknownField16 {
   sint64 value = 1;
+  int32 field_2 = 2;
 }
 
 message ReturnFlightQuery {
@@ -90,7 +91,7 @@ message ReturnFlightQuery {
   int32 step = 2;
   repeated LegWithSelection legs = 3;
   int32 field_8 = 8;
-  int32 field_9 = 9;
+  Seat seat = 9;
   int32 field_14 = 14;
   UnknownField16 field_16 = 16;
   int32 field_19 = 19;
