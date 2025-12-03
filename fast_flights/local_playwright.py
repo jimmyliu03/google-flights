@@ -11,6 +11,19 @@ async def fetch_with_playwright(url: str) -> str:
             await page.click('text="Accept all"')
         locator = page.locator('.eQ35Ce')
         await locator.wait_for()
+
+        # Wait for page to fully load before looking for "View more flights"
+        await page.wait_for_timeout(5000)
+
+        # Click "View more flights" if present (for long trips that hide additional results)
+        try:
+            view_more = page.locator('text="View more flights"')
+            if await view_more.is_visible(timeout=10000):
+                await view_more.click()
+                await page.wait_for_timeout(3000)  # Wait for more flights to load
+        except:
+            pass  # Button not present, continue
+
         body = await page.evaluate(
             "() => document.querySelector('[role=\"main\"]').innerHTML"
         )
