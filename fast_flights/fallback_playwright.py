@@ -12,8 +12,23 @@ async def main():
         browser = await p.chromium.launch()
         page = await browser.new_page()
         await page.goto("%s")
+        if page.url.startswith("https://consent.google.com"):
+            await page.click('text="Accept all"')
         locator = page.locator('.eQ35Ce')
         await locator.wait_for()
+
+        # Wait for page to fully load before looking for "View more flights"
+        await page.wait_for_timeout(5000)
+
+        # Click "View more flights" if present (for long trips that hide additional results)
+        try:
+            view_more = page.locator('text="View more flights"')
+            if await view_more.is_visible(timeout=10000):
+                await view_more.click()
+                await page.wait_for_timeout(3000)
+        except:
+            pass
+
         body = await page.evaluate(
             \"\"\"() => {
                 return document.querySelector('[role="main"]').innerHTML

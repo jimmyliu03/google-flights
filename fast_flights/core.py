@@ -10,6 +10,7 @@ from .flights_impl import FlightData, Passengers
 from .filter import TFSData
 from .fallback_playwright import fallback_playwright_fetch
 from .bright_data_fetch import bright_data_fetch
+from .browserless_fetch import browserless_fetch
 from .primp import Client, Response
 
 
@@ -26,7 +27,7 @@ def get_flights_from_filter(
     filter: TFSData,
     currency: str = "",
     *,
-    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data"] = "common",
+    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: Literal['js'] = ...,
 ) -> Union[DecodedResult, None]: ...
 
@@ -35,7 +36,7 @@ def get_flights_from_filter(
     filter: TFSData,
     currency: str = "",
     *,
-    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data"] = "common",
+    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: Literal['html'],
 ) -> Result: ...
 
@@ -43,7 +44,7 @@ def get_flights_from_filter(
     filter: TFSData,
     currency: str = "",
     *,
-    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data"] = "common",
+    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: DataSource = 'html',
     tfu: str = "EgQIABABIgA",
 ) -> Union[Result, DecodedResult, None]:
@@ -72,6 +73,9 @@ def get_flights_from_filter(
 
     elif mode == "bright-data":
         res = bright_data_fetch(params)
+
+    elif mode == "browserless":
+        res = browserless_fetch(params)
 
     else:
         res = fallback_playwright_fetch(params)
