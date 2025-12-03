@@ -322,7 +322,7 @@ def decode_return_flight_tfs(tfs: str) -> Dict[str, Any]:
 def get_return_flight_options(
     return_search_tfs: str,
     *,
-    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data"] = "fallback",
+    mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "fallback",
     currency: str = "",
     tfu: str = "EgQIABABIgA",
 ) -> List[ReturnFlightOption]:
