@@ -61,10 +61,8 @@ async def _fetch_with_browserless(url: str, api_key: str) -> str:
         except:
             pass  # Button not present, continue
 
-        # Extract main content
-        body = await page.evaluate(
-            '() => document.querySelector(\'[role="main"]\').innerHTML'
-        )
+        # Extract full page HTML including script tags (needed for JS parser to get flight numbers)
+        body = await page.evaluate('() => document.documentElement.outerHTML')
 
         await browser.close()
 
