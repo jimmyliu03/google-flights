@@ -21,3 +21,6 @@ class Flight:
     stops: int
     delay: Optional[str]
     price: str
+    departure_airport: Optional[str] = None
+    arrival_airport: Optional[str] = None
+    layover_info: Optional[str] = None

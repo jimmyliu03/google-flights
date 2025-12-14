@@ -120,7 +120,7 @@ def create_return_flight_filter(
             additional_segment.airline = segment['airline']
             additional_segment.flight_number = segment['flight_number']
 
-    # Set max_stops for both legs (unconditionally if max_stops is provided)
+    # Set max_stops for outbound leg
     if max_stops is not None:
         outbound_leg.max_stops = max_stops
 

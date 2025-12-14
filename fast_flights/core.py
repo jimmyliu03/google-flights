@@ -270,6 +270,27 @@ def parse_response(
             # Get prices
             price = safe(item.css_first(".YMlIz.FpEdX")).text() or "0"
 
+            # Extract airport codes and layover info from item's full text
+            # More robust than CSS selectors which Google can change
+            departure_airport = None
+            arrival_airport = None
+            layover_info = None
+
+            item_text = item.text()
+            # Match route pattern: airport codes are followed by airport names
+            # e.g., "GVAGeneva Airport–ZADZadar Airport"
+            route_match = re.search(r'([A-Z]{3})[A-Za-z\s]+[–\-]([A-Z]{3})[A-Za-z\s]+', item_text)
+            if route_match:
+                departure_airport = route_match.group(1)
+                arrival_airport = route_match.group(2)
+
+            # Match layover pattern like "1 hr 20 min VIEVienna" or "45 min LAXLos Angeles"
+            layover_match = re.search(r'(\d+\s*hr(?:\s*\d+\s*min)?|\d+\s*min)\s+([A-Z]{3})[A-Z]', item_text)
+            if layover_match:
+                time_part = layover_match.group(1)
+                airport_code = layover_match.group(2)
+                layover_info = f"{time_part} {airport_code}"
+
             # Stops formatting
             try:
                 stops_fmt = 0 if stops == "Nonstop" else int(stops.split(" ", 1)[0])
@@ -287,6 +308,9 @@ def parse_response(
                     "stops": stops_fmt,
                     "delay": delay,
                     "price": price.replace(",", ""),
+                    "departure_airport": departure_airport,
+                    "arrival_airport": arrival_airport,
+                    "layover_info": layover_info,
                 }
             )
 
