@@ -153,6 +153,197 @@ def create_return_flight_filter(
     return encoded
 
 
+def create_booking_tfs(
+    *,
+    # Outbound flight details
+    outbound_date: str,
+    outbound_from: str,
+    outbound_to: str,
+    outbound_airline: str,
+    outbound_flight_number: str,
+    outbound_connecting_segments: Optional[List[Dict[str, str]]] = None,
+    # Return flight details (optional for one-way)
+    return_date: Optional[str] = None,
+    return_from: Optional[str] = None,  # Usually same as outbound_to
+    return_to: Optional[str] = None,    # Usually same as outbound_from
+    return_airline: Optional[str] = None,
+    return_flight_number: Optional[str] = None,
+    return_connecting_segments: Optional[List[Dict[str, str]]] = None,
+    # Search preferences
+    seat: Literal["economy", "premium-economy", "business", "first"] = "economy",
+    max_stops: Optional[int] = 2,
+    exclude_basic_economy: bool = False,
+) -> str:
+    """Create a TFS string for Google Flights booking URL.
+
+    Encodes BOTH selected outbound and return flights (or just outbound for one-way).
+    Use this TFS with the /booking path instead of /search to go directly to
+    the booking/pricing page for the specific flight selection.
+
+    Args:
+        outbound_date (str): Outbound flight date (YYYY-MM-DD format).
+        outbound_from (str): Departure airport code (e.g., "SFO").
+        outbound_to (str): Arrival airport code (e.g., "LAX").
+        outbound_airline (str): Airline code (e.g., "DL").
+        outbound_flight_number (str): Flight number (e.g., "1598").
+        outbound_connecting_segments (list, optional): Additional segments for connecting flights.
+            Each segment: {'from': 'XXX', 'to': 'YYY', 'airline': 'XX', 'flight_number': '123', 'date': 'YYYY-MM-DD'}
+        return_date (str, optional): Return flight date. None for one-way.
+        return_from (str, optional): Return departure airport. Defaults to outbound_to.
+        return_to (str, optional): Return arrival airport. Defaults to outbound_from.
+        return_airline (str, optional): Return flight airline code.
+        return_flight_number (str, optional): Return flight number.
+        return_connecting_segments (list, optional): Additional segments for connecting return flights.
+        seat (str): Seat class - "economy", "premium-economy", "business", or "first".
+        max_stops (int, optional): Maximum stops per leg. Defaults to 2.
+        exclude_basic_economy (bool): Exclude basic economy fares. Defaults to False.
+
+    Returns:
+        str: Base64-encoded TFS string for use in:
+             https://www.google.com/travel/flights/booking?tfs={TFS}
+
+    Examples:
+        One-way flight:
+        >>> tfs = create_booking_tfs(
+        ...     outbound_date="2026-02-18",
+        ...     outbound_from="SFO",
+        ...     outbound_to="LAX",
+        ...     outbound_airline="DL",
+        ...     outbound_flight_number="1598",
+        ... )
+        >>> url = f"https://www.google.com/travel/flights/booking?tfs={tfs}"
+
+        Roundtrip flight:
+        >>> tfs = create_booking_tfs(
+        ...     outbound_date="2026-02-18",
+        ...     outbound_from="SFO",
+        ...     outbound_to="LAX",
+        ...     outbound_airline="DL",
+        ...     outbound_flight_number="1598",
+        ...     return_date="2026-02-22",
+        ...     return_airline="DL",
+        ...     return_flight_number="2272",
+        ... )
+        >>> url = f"https://www.google.com/travel/flights/booking?tfs={tfs}"
+
+        Connecting flight:
+        >>> tfs = create_booking_tfs(
+        ...     outbound_date="2026-02-18",
+        ...     outbound_from="SFO",
+        ...     outbound_to="MCO",
+        ...     outbound_airline="DL",
+        ...     outbound_flight_number="1234",
+        ...     outbound_connecting_segments=[
+        ...         {'from': 'ATL', 'to': 'MCO', 'airline': 'DL', 'flight_number': '5678', 'date': '2026-02-18'}
+        ...     ],
+        ...     return_date="2026-02-25",
+        ...     return_airline="DL",
+        ...     return_flight_number="4321",
+        ... )
+    """
+    query = PB.ReturnFlightQuery()
+
+    # Set root fields
+    query.query_type = 28
+    query.step = 2
+    query.field_8 = 1
+    query.field_14 = 1
+    query.field_19 = 1
+
+    # Map seat class string to protobuf enum
+    seat_map = {
+        "economy": PB.Seat.ECONOMY,
+        "premium-economy": PB.Seat.PREMIUM_ECONOMY,
+        "business": PB.Seat.BUSINESS,
+        "first": PB.Seat.FIRST,
+    }
+    query.seat = seat_map[seat]
+
+    # Set field_16 (contains -1 as sint64 and field_2=2)
+    query.field_16.value = -1
+    query.field_16.field_2 = 2
+
+    # Set field_25 (exclude_basic_economy) if needed
+    if exclude_basic_economy:
+        query.field_25 = 1
+
+    # === OUTBOUND LEG ===
+    outbound_leg = query.legs.add()
+    outbound_leg.date = outbound_date
+
+    # Add first outbound segment
+    first_segment = outbound_leg.selected_flight.add()
+    first_segment.from_airport = outbound_from
+    first_segment.date = outbound_date
+    first_segment.to_airport = outbound_connecting_segments[0]['from'] if outbound_connecting_segments else outbound_to
+    first_segment.airline = outbound_airline
+    first_segment.flight_number = outbound_flight_number
+
+    # Add additional outbound segments for connecting flights
+    if outbound_connecting_segments:
+        for segment in outbound_connecting_segments:
+            additional_segment = outbound_leg.selected_flight.add()
+            additional_segment.from_airport = segment['from']
+            additional_segment.date = segment.get('date', outbound_date)
+            additional_segment.to_airport = segment['to']
+            additional_segment.airline = segment['airline']
+            additional_segment.flight_number = segment['flight_number']
+
+    # Set max_stops for outbound leg
+    if max_stops is not None:
+        outbound_leg.max_stops = max_stops
+
+    # Location filters for outbound leg
+    outbound_leg.location_filter_1.filter_type = 1
+    outbound_leg.location_filter_1.value = outbound_from
+    outbound_leg.location_filter_2.filter_type = 1
+    outbound_leg.location_filter_2.value = outbound_to
+
+    # === RETURN LEG (if roundtrip) ===
+    if return_date:
+        return_leg = query.legs.add()
+        return_leg.date = return_date
+
+        # Default return airports (reverse of outbound)
+        actual_return_from = return_from or outbound_to
+        actual_return_to = return_to or outbound_from
+
+        # Add return flight selection if provided
+        if return_airline and return_flight_number:
+            first_return_segment = return_leg.selected_flight.add()
+            first_return_segment.from_airport = actual_return_from
+            first_return_segment.date = return_date
+            first_return_segment.to_airport = return_connecting_segments[0]['from'] if return_connecting_segments else actual_return_to
+            first_return_segment.airline = return_airline
+            first_return_segment.flight_number = return_flight_number
+
+            # Add additional return segments for connecting flights
+            if return_connecting_segments:
+                for segment in return_connecting_segments:
+                    additional_segment = return_leg.selected_flight.add()
+                    additional_segment.from_airport = segment['from']
+                    additional_segment.date = segment.get('date', return_date)
+                    additional_segment.to_airport = segment['to']
+                    additional_segment.airline = segment['airline']
+                    additional_segment.flight_number = segment['flight_number']
+
+        # Set max_stops for return leg
+        if max_stops is not None:
+            return_leg.max_stops = max_stops
+
+        # Location filters for return leg
+        return_leg.location_filter_1.filter_type = 1
+        return_leg.location_filter_1.value = actual_return_from
+        return_leg.location_filter_2.filter_type = 1
+        return_leg.location_filter_2.value = actual_return_to
+
+    # Serialize and encode using URL-safe base64 without padding
+    serialized = query.SerializeToString()
+    encoded = base64.urlsafe_b64encode(serialized).rstrip(b'=').decode('utf-8')
+
+    return encoded
+
+
 def create_return_flight_url(
     *,
     outbound_date: str,

@@ -10,6 +10,7 @@ from .return_flight import (
     get_return_flight_options,
     decode_return_flight_tfs,
     ReturnFlightOption,
+    create_booking_tfs,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "get_return_flight_options",
     "decode_return_flight_tfs",
     "ReturnFlightOption",
+    "create_booking_tfs",
 ]
