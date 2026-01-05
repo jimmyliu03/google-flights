@@ -243,12 +243,16 @@ def create_booking_tfs(
     """
     query = PB.ReturnFlightQuery()
 
+    # Determine if this is a roundtrip or one-way booking
+    is_roundtrip = return_date is not None
+
     # Set root fields
     query.query_type = 28
     query.step = 2
     query.field_8 = 1
     query.field_14 = 1
-    query.field_19 = 1
+    # Set field_19: 1 for round-trip, 2 for one-way
+    query.field_19 = 1 if is_roundtrip else 2
 
     # Map seat class string to protobuf enum
     seat_map = {
