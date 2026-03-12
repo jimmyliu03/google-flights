@@ -7,6 +7,7 @@ from typing_extensions import TypeAlias, override
 from .flights_impl import ItinerarySummary
 
 DecodePath: TypeAlias = List[int]
+PriceLevel: TypeAlias = str  # "low", "typical", "high"
 NLBaseType: TypeAlias = Union[int, str, None, Sequence['NLBaseType']]
 
 # N(ested)L(ist)Data, this class allows indexing using a path, and as an int to make
@@ -149,6 +150,74 @@ class Itinerary:
     tfu: Optional[str] = None
 
 @dataclass
+class PriceGraphPoint:
+    timestamp_ms: int
+    price: int
+
+@dataclass
+class PriceInsights:
+    price_level: PriceLevel  # "low", "typical", "high"
+    current_price: Optional[int]
+    typical_price_low: Optional[int]
+    typical_price_high: Optional[int]
+    price_difference: Optional[int]  # difference from typical (negative = below typical)
+    price_history: List[PriceGraphPoint]
+    destination_city: Optional[str]
+
+    @classmethod
+    def from_raw(cls, data: list) -> Optional['PriceInsights']:
+        """Parse price insights from data[5] of the JS response."""
+        if data is None or not isinstance(data, list) or len(data) < 6:
+            return None
+
+        try:
+            # data[0] is the price level enum
+            # Verified against HTML mode current_price text:
+            #   1 = low, 2 = low, 3 = typical, 4 = typical, 5 = high
+            level_map = {1: "low", 2: "low", 3: "typical", 4: "typical", 5: "high"}
+            raw_level = data[0]
+            price_level = level_map.get(raw_level, "typical")
+
+            # data[1] = [null, current_price]
+            current_price = data[1][1] if isinstance(data[1], list) and len(data[1]) > 1 else None
+
+            # data[3] = [null, price_difference_from_typical]
+            price_difference = data[3][1] if isinstance(data[3], list) and len(data[3]) > 1 else None
+
+            # data[4] = [null, typical_price_low]
+            typical_price_low = data[4][1] if isinstance(data[4], list) and len(data[4]) > 1 else None
+
+            # data[5] = [null, typical_price_high]
+            typical_price_high = data[5][1] if isinstance(data[5], list) and len(data[5]) > 1 else None
+
+            # data[10] = [[timestamp_ms, price], ...] - price history graph
+            price_history = []
+            if len(data) > 10 and isinstance(data[10], list) and len(data[10]) > 0:
+                raw_history = data[10][0] if isinstance(data[10][0], list) and len(data[10][0]) > 0 and isinstance(data[10][0][0], list) else data[10]
+                for point in raw_history:
+                    if isinstance(point, list) and len(point) >= 2:
+                        price_history.append(PriceGraphPoint(
+                            timestamp_ms=point[0],
+                            price=point[1]
+                        ))
+
+            # data[12] = destination city name
+            destination_city = data[12] if len(data) > 12 and isinstance(data[12], str) else None
+
+            return cls(
+                price_level=price_level,
+                current_price=current_price,
+                typical_price_low=typical_price_low,
+                typical_price_high=typical_price_high,
+                price_difference=price_difference,
+                price_history=price_history,
+                destination_city=destination_city,
+            )
+        except (IndexError, TypeError, KeyError):
+            return None
+
+
+@dataclass
 class DecodedResult:
     # raw unparsed data
     raw: list
@@ -156,8 +225,7 @@ class DecodedResult:
     best: List[Itinerary]
     other: List[Itinerary]
 
-    # airport_details: Any
-    # unknown_1: Any
+    price_insights: Optional[PriceInsights] = None
 
 class CodeshareDecoder(Decoder):
     AIRLINE_CODE: DecoderKey[AirlineCode] = DecoderKey([0])
@@ -254,4 +322,9 @@ class ResultDecoder(Decoder):
         for itinerary in result_data.get('other', []):
             itinerary.tfu = tfu
 
-        return DecodedResult(**result_data, raw=root)
+        # Extract price insights from data[5] if present
+        price_insights = None
+        if len(root) > 5 and root[5] is not None:
+            price_insights = PriceInsights.from_raw(root[5])
+
+        return DecodedResult(**result_data, raw=root, price_insights=price_insights)
