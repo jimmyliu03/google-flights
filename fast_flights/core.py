@@ -16,8 +16,8 @@ from .primp import Client, Response
 
 DataSource = Literal['html', 'js']
 
-def fetch(params: dict) -> Response:
-    client = Client(impersonate="chrome_126", verify=False)
+def fetch(params: dict, proxy: Optional[str] = None) -> Response:
+    client = Client(impersonate="chrome_126", verify=False, proxy=proxy)
     res = client.get("https://www.google.com/travel/flights", params=params)
     assert res.status_code == 200, f"{res.status_code} Result: {res.text_markdown}"
     return res
@@ -29,6 +29,7 @@ def get_flights_from_filter(
     *,
     mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: Literal['js'] = ...,
+    proxy: Optional[str] = None,
 ) -> Union[DecodedResult, None]: ...
 
 @overload
@@ -38,6 +39,7 @@ def get_flights_from_filter(
     *,
     mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: Literal['html'],
+    proxy: Optional[str] = None,
 ) -> Result: ...
 
 def get_flights_from_filter(
@@ -47,6 +49,7 @@ def get_flights_from_filter(
     mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: DataSource = 'html',
     tfu: str = "EgQIABABIgA",
+    proxy: Optional[str] = None,
 ) -> Union[Result, DecodedResult, None]:
     data = filter.as_b64()
 
@@ -59,7 +62,7 @@ def get_flights_from_filter(
 
     if mode in {"common", "fallback"}:
         try:
-            res = fetch(params)
+            res = fetch(params, proxy=proxy)
         except AssertionError as e:
             if mode == "fallback":
                 res = fallback_playwright_fetch(params)
@@ -84,7 +87,7 @@ def get_flights_from_filter(
         return parse_response(res, data_source, tfu=tfu)
     except RuntimeError as e:
         if mode == "fallback":
-            return get_flights_from_filter(filter, currency=currency, mode="force-fallback", data_source=data_source, tfu=tfu)
+            return get_flights_from_filter(filter, currency=currency, mode="force-fallback", data_source=data_source, tfu=tfu, proxy=proxy)
         raise e
 
 
@@ -98,6 +101,7 @@ def get_flights(
     max_stops: Optional[int] = None,
     exclude_basic_economy: bool = False,
     data_source: DataSource = 'html',
+    proxy: Optional[str] = None,
 ) -> Union[Result, DecodedResult, None]:
     return get_flights_from_filter(
         TFSData.from_interface(
@@ -110,6 +114,7 @@ def get_flights(
         ),
         mode=fetch_mode,
         data_source=data_source,
+        proxy=proxy,
     )
 
 
@@ -120,6 +125,7 @@ def get_flights_from_tfs(
     *,
     mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: Literal['js'] = ...,
+    proxy: Optional[str] = None,
 ) -> Union[DecodedResult, None]: ...
 
 @overload
@@ -129,6 +135,7 @@ def get_flights_from_tfs(
     *,
     mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: Literal['html'],
+    proxy: Optional[str] = None,
 ) -> Result: ...
 
 def get_flights_from_tfs(
@@ -138,6 +145,7 @@ def get_flights_from_tfs(
     mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "common",
     data_source: DataSource = 'html',
     tfu: str = "EgQIABABIgA",
+    proxy: Optional[str] = None,
 ) -> Union[Result, DecodedResult, None]:
     """Fetch flights from a raw TFS (base64-encoded protobuf) string.
 
@@ -149,6 +157,7 @@ def get_flights_from_tfs(
         mode (str, optional): Fetch mode. Defaults to "common".
         data_source (str, optional): Data source ('html' or 'js'). Defaults to 'html'.
         tfu (str, optional): TFU parameter for Google Flights. Defaults to "EgQIABABIgA".
+        proxy (str, optional): Proxy URL for HTTP requests. Defaults to None.
 
     Returns:
         Result or DecodedResult: Flight search results.
@@ -174,7 +183,7 @@ def get_flights_from_tfs(
 
     if mode in {"common", "fallback"}:
         try:
-            res = fetch(params)
+            res = fetch(params, proxy=proxy)
         except AssertionError as e:
             if mode == "fallback":
                 res = fallback_playwright_fetch(params)
@@ -199,7 +208,7 @@ def get_flights_from_tfs(
         return parse_response(res, data_source, tfu=tfu)
     except RuntimeError as e:
         if mode == "fallback":
-            return get_flights_from_tfs(tfs, currency, mode="force-fallback", data_source=data_source, tfu=tfu)
+            return get_flights_from_tfs(tfs, currency, mode="force-fallback", data_source=data_source, tfu=tfu, proxy=proxy)
         raise e
 
 

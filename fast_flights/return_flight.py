@@ -520,6 +520,7 @@ def get_return_flight_options(
     mode: Literal["common", "fallback", "force-fallback", "local", "bright-data", "browserless"] = "fallback",
     currency: str = "",
     tfu: str = "EgQIABABIgA",
+    proxy: Optional[str] = None,
 ) -> List[ReturnFlightOption]:
     """Fetch and decode all return flight options for a given outbound selection.
 
@@ -579,7 +580,8 @@ def get_return_flight_options(
             data_source='js',
             mode=mode,
             currency=currency,
-            tfu=tfu
+            tfu=tfu,
+            proxy=proxy,
         )
     except:
         pass  # Will fall back to HTML
@@ -639,7 +641,8 @@ def get_return_flight_options(
         data_source='html',
         mode=mode,  # Use the same mode as specified (fallback/force-fallback/local/bright-data)
         currency=currency,
-        tfu=tfu
+        tfu=tfu,
+        proxy=proxy,
     )
 
     if result_html is None or not hasattr(result_html, 'flights'):
