@@ -56,6 +56,7 @@ def get_flights_from_filter(
     params = {
         "tfs": data.decode("utf-8"),
         "hl": "en",
+        "gl": "US",  # Pinned for fred-app D-API-04 — prevents currency drift at non-US edge locations
         "tfu": tfu,
         "curr": currency,
     }
@@ -177,6 +178,7 @@ def get_flights_from_tfs(
     params = {
         "tfs": tfs,
         "hl": "en",
+        "gl": "US",  # Pinned for fred-app D-API-04 — prevents currency drift at non-US edge locations
         "tfu": tfu,
         "curr": currency,
     }
