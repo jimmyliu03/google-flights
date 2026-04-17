@@ -8,7 +8,11 @@ from .decoder import DecodedResult, ResultDecoder
 from .schema import Flight, Result
 from .flights_impl import FlightData, Passengers
 from .filter import TFSData
-from .fallback_playwright import fallback_playwright_fetch
+# fallback_playwright_fetch / local_playwright_fetch are imported lazily inside
+# the functions that use them — keeping them at module top-level would make
+# `playwright` (≈130 MB with Chromium driver) a hard dependency for every
+# caller, even those that never invoke fallback mode. See
+# https://github.com/jimmyliu03/google-flights/issues for context.
 from .bright_data_fetch import bright_data_fetch
 from .browserless_fetch import browserless_fetch
 from .primp import Client, Response
@@ -66,6 +70,7 @@ def get_flights_from_filter(
             res = fetch(params, proxy=proxy)
         except AssertionError as e:
             if mode == "fallback":
+                from .fallback_playwright import fallback_playwright_fetch
                 res = fallback_playwright_fetch(params)
             else:
                 raise e
@@ -82,6 +87,7 @@ def get_flights_from_filter(
         res = browserless_fetch(params)
 
     else:
+        from .fallback_playwright import fallback_playwright_fetch
         res = fallback_playwright_fetch(params)
 
     try:
@@ -188,6 +194,7 @@ def get_flights_from_tfs(
             res = fetch(params, proxy=proxy)
         except AssertionError as e:
             if mode == "fallback":
+                from .fallback_playwright import fallback_playwright_fetch
                 res = fallback_playwright_fetch(params)
             else:
                 raise e
@@ -204,6 +211,7 @@ def get_flights_from_tfs(
         res = browserless_fetch(params)
 
     else:
+        from .fallback_playwright import fallback_playwright_fetch
         res = fallback_playwright_fetch(params)
 
     try:
