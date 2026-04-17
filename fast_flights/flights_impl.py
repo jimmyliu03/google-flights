@@ -21,14 +21,23 @@ class FlightData:
         to_airport (str): Arrival (airport). Where to?
         max_stops (int, optional): Maximum number of stops. Default is None.
         airlines (List[str], optional): Airlines this flight should be taken with. Default is None.
+        time_restrictions (dict, optional): Per-leg time window filter. Keys:
+            earliest_departure, latest_departure, earliest_arrival, latest_arrival.
+            Values are hours in 0..23. Missing keys default to the permissive bound
+            (0 for earliest, 23 for latest). Pass None (the default) to encode no
+            time filter at all (Google omits all four fields in this case).
     """
 
-    __slots__ = ("date", "from_airport", "to_airport", "max_stops", "airlines")
+    __slots__ = (
+        "date", "from_airport", "to_airport", "max_stops", "airlines",
+        "time_restrictions",
+    )
     date: str
     from_airport: str
     to_airport: str
     max_stops: Optional[int]
     airlines: Optional[List[str]]
+    time_restrictions: Optional[dict]
 
     def __init__(
         self,
@@ -38,6 +47,7 @@ class FlightData:
         to_airport: Union[Airport, str],
         max_stops: Optional[int] = None,
         airlines: Optional[List[str]] = None,
+        time_restrictions: Optional[dict] = None,
     ):
         self.date = date
         self.from_airport = (
@@ -62,6 +72,17 @@ class FlightData:
         else:
             # make it consistent with self.max_stops and set it to None
             self.airlines = None
+        if time_restrictions is not None:
+            tr = dict(time_restrictions)
+            for k, v in tr.items():
+                if k not in ("earliest_departure", "latest_departure",
+                             "earliest_arrival", "latest_arrival"):
+                    raise ValueError(f"Unknown time_restrictions key: {k}")
+                if v is not None and not (0 <= int(v) <= 23):
+                    raise ValueError(f"{k}={v} out of range 0..23")
+            self.time_restrictions = tr
+        else:
+            self.time_restrictions = None
 
     def attach(self, info: PB.Info) -> None:  # type: ignore
         data = info.data.add()
@@ -80,6 +101,22 @@ class FlightData:
             data.max_stops = self.max_stops
         if self.airlines is not None:
             data.airlines.extend(self.airlines)
+        if self.time_restrictions is not None:
+            tr = self.time_restrictions
+            # When any slider is touched, Google emits all four fields. Fill
+            # unprovided bounds with 0 (earliest) or 23 (latest).
+            data.earliest_departure = int(
+                tr.get("earliest_departure") if tr.get("earliest_departure") is not None else 0
+            )
+            data.latest_departure = int(
+                tr.get("latest_departure") if tr.get("latest_departure") is not None else 23
+            )
+            data.earliest_arrival = int(
+                tr.get("earliest_arrival") if tr.get("earliest_arrival") is not None else 0
+            )
+            data.latest_arrival = int(
+                tr.get("latest_arrival") if tr.get("latest_arrival") is not None else 23
+            )
 
     def __repr__(self) -> str:
         return (
@@ -87,7 +124,8 @@ class FlightData:
             f"from_airport={self.from_airport}, "
             f"to_airport={self.to_airport}, "
             f"max_stops={self.max_stops}, "
-            f"airlines={self.airlines}"
+            f"airlines={self.airlines}, "
+            f"time_restrictions={self.time_restrictions}"
         )
 
 
