@@ -40,12 +40,26 @@ def test_baseline_roundtrip_unchanged():
     assert _encode(_fd_pair()) == expected
 
 
-def test_airlines_encoded_at_field_7():
-    """Airlines is field 7 on FlightData (Google Flights wire format).
+def test_airlines_include_at_field_6():
+    """INCLUDE-only airlines list is FlightData field 6 (Google's allowlist).
 
-    3a 02 44 4c => field 7, length 2, "DL".
+    32 02 44 4c => field 6, length 2, "DL".
+    Verified via Chrome reverse-engineering: when the user toggles the master
+    "Select all airlines" off and individually checks airlines, Google encodes
+    them as an include list at field 6.
     """
     hex_out = _encode(_fd_pair({"airlines": ["DL"]}))
+    assert "3202444c" in hex_out
+
+
+def test_airlines_exclude_at_field_7():
+    """EXCLUDE airlines list is FlightData field 7 (denylist).
+
+    3a 02 44 4c => field 7, length 2, "DL".
+    Verified via Chrome: when the user UNCHECKS individual airlines (master
+    toggle on, specific airlines off), Google encodes them as field 7.
+    """
+    hex_out = _encode(_fd_pair({"airlines_exclude": ["DL"]}))
     assert "3a02444c" in hex_out
 
 

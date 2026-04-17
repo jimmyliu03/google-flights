@@ -20,23 +20,29 @@ class FlightData:
         from_airport (str): Departure (airport). Where from?
         to_airport (str): Arrival (airport). Where to?
         max_stops (int, optional): Maximum number of stops. Default is None.
-        airlines (List[str], optional): Airlines this flight should be taken with. Default is None.
+        airlines (List[str], optional): INCLUDE-only airline allowlist (field 6).
+            When set, only flights on these airlines are returned. Default is None.
+        airlines_exclude (List[str], optional): Airlines to exclude (field 7).
+            Mutually-exclusive companion to ``airlines`` — Google's UI only uses
+            one mode at a time but the protobuf has both fields. Default is None.
         time_restrictions (dict, optional): Per-leg time window filter. Keys:
             earliest_departure, latest_departure, earliest_arrival, latest_arrival.
-            Values are hours in 0..23. Missing keys default to the permissive bound
-            (0 for earliest, 23 for latest). Pass None (the default) to encode no
-            time filter at all (Google omits all four fields in this case).
+            Values are hours in 0..23 using Google's RAW encoding semantics:
+            earliest_* is the exact start hour; latest_* is the display hour
+            MINUS 1 (e.g. encode 16 to display "5 PM" as the upper bound).
+            Pass None (the default) to encode no time filter at all.
     """
 
     __slots__ = (
-        "date", "from_airport", "to_airport", "max_stops", "airlines",
-        "time_restrictions",
+        "date", "from_airport", "to_airport", "max_stops",
+        "airlines", "airlines_exclude", "time_restrictions",
     )
     date: str
     from_airport: str
     to_airport: str
     max_stops: Optional[int]
     airlines: Optional[List[str]]
+    airlines_exclude: Optional[List[str]]
     time_restrictions: Optional[dict]
 
     def __init__(
@@ -47,6 +53,7 @@ class FlightData:
         to_airport: Union[Airport, str],
         max_stops: Optional[int] = None,
         airlines: Optional[List[str]] = None,
+        airlines_exclude: Optional[List[str]] = None,
         time_restrictions: Optional[dict] = None,
     ):
         self.date = date
@@ -57,21 +64,24 @@ class FlightData:
             to_airport.value if isinstance(to_airport, Airport) else to_airport
         )
         self.max_stops = max_stops
-        # TODO: All the list of airlines should technically be added to ._generated_enum like Airports
-        # but I don't know how to find the comprehensive list of airlines now.
-        if airlines is not None:
-            self.airlines = []
-            for airline in airlines:
-                airline = airline.upper()
-                if not (len(airline) == 2 or airline in AIRLINE_ALLIANCES):
+
+        def _validate_airlines(lst):
+            if lst is None:
+                return None
+            out = []
+            for airline in lst:
+                a = airline.upper()
+                if not (len(a) == 2 or a in AIRLINE_ALLIANCES):
                     raise ValueError(
-                        f"Invalid airline code: {airline}. "
+                        f"Invalid airline code: {a}. "
                         f"Airline codes should be 2 characters long or in the list of airline alliances: {AIRLINE_ALLIANCES}"
                     )
-                self.airlines.append(airline)
-        else:
-            # make it consistent with self.max_stops and set it to None
-            self.airlines = None
+                out.append(a)
+            return out
+
+        self.airlines = _validate_airlines(airlines)
+        self.airlines_exclude = _validate_airlines(airlines_exclude)
+
         if time_restrictions is not None:
             tr = dict(time_restrictions)
             for k, v in tr.items():
@@ -101,6 +111,8 @@ class FlightData:
             data.max_stops = self.max_stops
         if self.airlines is not None:
             data.airlines.extend(self.airlines)
+        if self.airlines_exclude is not None:
+            data.airlines_exclude.extend(self.airlines_exclude)
         if self.time_restrictions is not None:
             tr = self.time_restrictions
             # When any slider is touched, Google emits all four fields. Fill

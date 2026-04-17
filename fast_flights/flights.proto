@@ -10,12 +10,19 @@ message FlightData {
   Airport from_flight = 13;
   Airport to_flight = 14;
   optional int32 max_stops = 5;
-  // Google Flights encodes airlines at field 7 (not 6) on the first FlightData
-  // of a search. Only the first leg's airlines filter is honored by the server.
-  repeated string airlines = 7;
-  // Time-window filters are per-leg, expressed as hours 0..23.
-  // Google only emits these when the user has touched a slider; a "no filter"
-  // state omits all four fields (they are not encoded with 0/23 defaults).
+  // Airlines filter has TWO modes (verified via Chrome reverse-engineering):
+  //   field 6 = INCLUDE list (allowlist) — flights must be on these airlines.
+  //   field 7 = EXCLUDE list (denylist) — flights must NOT be on these.
+  // Google's UI uses include-mode by default (the "Select all airlines" toggle
+  // off + check the airlines you want). Only the first FlightData's filter
+  // is honored by the server.
+  repeated string airlines         = 6;  // include-only allowlist
+  repeated string airlines_exclude = 7;  // exclude denylist
+  // Time-window filters are per-leg. Encoding semantics (verified via Chrome):
+  //   earliest_*: display hour (exact, 0-23)
+  //   latest_*:   display hour MINUS 1 (encoded N → Google displays N+1:00)
+  // For example, "departures up to 5 PM" encodes latest_departure=16.
+  // Google omits all four fields when no slider is touched.
   optional int32 earliest_departure = 8;
   optional int32 latest_departure   = 9;
   optional int32 earliest_arrival   = 10;
