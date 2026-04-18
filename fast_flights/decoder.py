@@ -171,10 +171,18 @@ class PriceInsights:
             return None
 
         try:
-            # data[0] is the price level enum
-            # Verified against HTML mode current_price text:
-            #   1 = low, 2 = low, 3 = typical, 4 = typical, 5 = high
-            level_map = {1: "low", 2: "low", 3: "typical", 4: "typical", 5: "high"}
+            # data[0] is the price level enum. Empirically verified by running
+            # 8 real searches and correlating data[0] with where current_price
+            # falls relative to typical_price_low/high (data[4][1], data[5][1]):
+            #   1 = current_price < typical_low                 → "low"
+            #   2 = inside typical, near low end (~0-30% in)    → "typical"
+            #   3 = inside typical, middle (~30-60% in)         → "typical"
+            #   4 = inside typical, near high end (~60-100% in) → "typical"
+            #   5 = current_price > typical_high                → "high"
+            # The earlier mapping (2 → "low") mislabeled prices that sit just
+            # inside the typical band — the Google Flights UI shows those as
+            # "typical" with the dot in the yellow zone of the price bar.
+            level_map = {1: "low", 2: "typical", 3: "typical", 4: "typical", 5: "high"}
             raw_level = data[0]
             price_level = level_map.get(raw_level, "typical")
 
