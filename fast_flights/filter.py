@@ -20,8 +20,15 @@ def create_filter(
         max_stops (int, optional): Maximum number of stops. Defaults to None.
         exclude_basic_economy (bool, optional): Exclude basic economy fares. Defaults to False.
     """
-    for fd in flight_data:
-        fd.max_stops = max_stops
+    # Only fan the top-level max_stops out to each leg when the caller
+    # actually provided one. The previous unconditional override silently
+    # wiped per-leg FlightData(max_stops=N) settings whenever the caller
+    # forgot to also pass create_filter(max_stops=N) — turning Nonstop
+    # filters into no-op TFS strings (verified via Chrome reverse-engineering
+    # against SFO→NYC May 19: nonstop+unfiltered produced byte-identical TFS).
+    if max_stops is not None:
+        for fd in flight_data:
+            fd.max_stops = max_stops
 
     return TFSData.from_interface(
         flight_data=flight_data,
