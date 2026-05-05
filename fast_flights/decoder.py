@@ -1,6 +1,7 @@
 import abc
+import sys
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Generic, Optional, Sequence, TypeVar, Union, Tuple
 from typing_extensions import TypeAlias, override
 
@@ -259,11 +260,7 @@ class DecodedResult:
     other: List[Itinerary]
 
     price_insights: Optional[PriceInsights] = None
-    warnings: List[TravelWarning] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.warnings is None:
-            self.warnings = []
+    warnings: List[TravelWarning] = field(default_factory=list)
 
 
 # Discriminate itinerary entries from "decoration" entries (warning dialogs,
@@ -283,6 +280,10 @@ def _parse_travel_warning(el: Any) -> Optional[TravelWarning]:
     Returns ``None`` if the body doesn't match — we only surface entries
     that look like travel advisories so callers don't get spurious
     warnings from unrelated decoration markers.
+
+    Body discriminator is strict: forward-scan from index 1 for the first
+    sub-list shaped exactly ``[str, str, int]``. This avoids picking up
+    later-added action/button sub-lists and is order-independent.
     """
     if not isinstance(el, list) or not el:
         return None
@@ -290,15 +291,20 @@ def _parse_travel_warning(el: Any) -> Optional[TravelWarning]:
     if not isinstance(code, int):
         return None
     body = next(
-        (x for x in reversed(el[1:]) if isinstance(x, list) and len(x) >= 2 and isinstance(x[0], str)),
+        (
+            x
+            for x in el[1:]
+            if isinstance(x, list)
+            and len(x) >= 3
+            and isinstance(x[0], str)
+            and isinstance(x[1], str)
+            and isinstance(x[2], int)
+        ),
         None,
     )
     if body is None:
         return None
-    title = body[0]
-    message = body[1] if len(body) > 1 and isinstance(body[1], str) else ""
-    severity = body[2] if len(body) > 2 and isinstance(body[2], int) else 0
-    return TravelWarning(code=code, title=title, message=message, severity=severity)
+    return TravelWarning(code=code, title=body[0], message=body[1], severity=body[2])
 
 class CodeshareDecoder(Decoder):
     AIRLINE_CODE: DecoderKey[AirlineCode] = DecoderKey([0])
@@ -376,7 +382,23 @@ class ItineraryDecoder(Decoder):
     def decode(cls, root: Union[list, NLData]) -> List[Itinerary]:
         # Filter decoration entries (e.g. injected travel-restriction
         # warnings) so they don't crash decode_el's [0, 0] traversal.
-        return [Itinerary(**cls.decode_el(NLData(el))) for el in root if _is_itinerary_entry(el)]
+        # Log unrecognized non-itinerary entries to stderr — silent drops
+        # of legitimate itineraries with surprising shapes are worse than
+        # the original crash.
+        out: List[Itinerary] = []
+        for i, el in enumerate(root):
+            if _is_itinerary_entry(el):
+                out.append(Itinerary(**cls.decode_el(NLData(el))))
+                continue
+            if _parse_travel_warning(el) is None:
+                preview = repr(el)[:200]
+                print(
+                    f"[fast_flights] ItineraryDecoder skipped unrecognized entry "
+                    f"at index {i}: {preview}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        return out
 
 
 class ResultDecoder(Decoder):
