@@ -155,6 +155,31 @@ class PriceGraphPoint:
     price: int
 
 @dataclass
+class TravelWarning:
+    """A travel advisory dialog Google injects into the response.
+
+    Observed on routes affected by airspace closures (e.g. Warsaw to Asia
+    after Russian airspace was closed): Google emits a sibling entry such
+    as ``[12, null, null, null, null, ["Travel restricted",
+    "Airspace closure may affect flights.", 2]]``. The leading int is a
+    type marker (``12`` = travel-restriction advisory) and the trailing
+    int in the body is a severity (1=info, 2=warning).
+
+    Two placements appear in the wild:
+      * top-level at ``data[22]`` — purely informational, decoder ignores
+      * inline as a sibling of itineraries at ``data[2][0]``/``data[3][0]``
+        — replaces what the decoder expected to be itinerary shape
+
+    Surfaced via :class:`DecodedResult.warnings` so callers can read them.
+    """
+
+    code: int
+    title: str
+    message: str
+    severity: int
+
+
+@dataclass
 class PriceInsights:
     price_level: PriceLevel  # "low", "typical", "high"
     current_price: Optional[int]
@@ -234,6 +259,46 @@ class DecodedResult:
     other: List[Itinerary]
 
     price_insights: Optional[PriceInsights] = None
+    warnings: List[TravelWarning] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.warnings is None:
+            self.warnings = []
+
+
+# Discriminate itinerary entries from "decoration" entries (warning dialogs,
+# ads, etc.) Google occasionally injects as siblings of itineraries inside
+# data[2][0] / data[3][0]. A real itinerary always has its inner protobuf
+# list at index 0; a decoration entry has an int type-marker at index 0
+# (e.g. 12 for travel-restriction advisories), which would otherwise
+# trigger ``Found non list type while trying to decode [0, 0]``.
+def _is_itinerary_entry(el: Any) -> bool:
+    return isinstance(el, list) and len(el) > 0 and isinstance(el[0], list)
+
+
+def _parse_travel_warning(el: Any) -> Optional[TravelWarning]:
+    """Best-effort parse of a non-itinerary entry into a TravelWarning.
+
+    Expected shape: ``[code, *placeholders, [title, message, severity]]``.
+    Returns ``None`` if the body doesn't match — we only surface entries
+    that look like travel advisories so callers don't get spurious
+    warnings from unrelated decoration markers.
+    """
+    if not isinstance(el, list) or not el:
+        return None
+    code = el[0]
+    if not isinstance(code, int):
+        return None
+    body = next(
+        (x for x in reversed(el[1:]) if isinstance(x, list) and len(x) >= 2 and isinstance(x[0], str)),
+        None,
+    )
+    if body is None:
+        return None
+    title = body[0]
+    message = body[1] if len(body) > 1 and isinstance(body[1], str) else ""
+    severity = body[2] if len(body) > 2 and isinstance(body[2], int) else 0
+    return TravelWarning(code=code, title=title, message=message, severity=severity)
 
 class CodeshareDecoder(Decoder):
     AIRLINE_CODE: DecoderKey[AirlineCode] = DecoderKey([0])
@@ -309,7 +374,9 @@ class ItineraryDecoder(Decoder):
     @classmethod
     @override
     def decode(cls, root: Union[list, NLData]) -> List[Itinerary]:
-        return [Itinerary(**cls.decode_el(NLData(el))) for el in root]
+        # Filter decoration entries (e.g. injected travel-restriction
+        # warnings) so they don't crash decode_el's [0, 0] traversal.
+        return [Itinerary(**cls.decode_el(NLData(el))) for el in root if _is_itinerary_entry(el)]
 
 
 class ResultDecoder(Decoder):
@@ -335,4 +402,21 @@ class ResultDecoder(Decoder):
         if len(root) > 5 and root[5] is not None:
             price_insights = PriceInsights.from_raw(root[5])
 
-        return DecodedResult(**result_data, raw=root, price_insights=price_insights)
+        # Collect travel warnings from both placements Google uses:
+        #   * data[22][*] — top-level advisory list
+        #   * non-itinerary siblings inside data[2][0] / data[3][0]
+        warnings: List[TravelWarning] = []
+        for idx in (2, 3):
+            if idx < len(root) and isinstance(root[idx], list) and root[idx] and isinstance(root[idx][0], list):
+                for el in root[idx][0]:
+                    if not _is_itinerary_entry(el):
+                        parsed = _parse_travel_warning(el)
+                        if parsed is not None:
+                            warnings.append(parsed)
+        if len(root) > 22 and isinstance(root[22], list):
+            for el in root[22]:
+                parsed = _parse_travel_warning(el)
+                if parsed is not None:
+                    warnings.append(parsed)
+
+        return DecodedResult(**result_data, raw=root, price_insights=price_insights, warnings=warnings)

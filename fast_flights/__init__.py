@@ -2,7 +2,7 @@ from .cookies_impl import Cookies
 from .core import get_flights_from_filter, get_flights, get_flights_from_tfs
 from .filter import create_filter
 from .flights_impl import Airport, FlightData, Passengers, TFSData
-from .decoder import PriceInsights, PriceGraphPoint
+from .decoder import PriceInsights, PriceGraphPoint, TravelWarning
 from .schema import Flight, Result
 from .search import search_airport
 from .return_flight import (
@@ -35,4 +35,5 @@ __all__ = [
     "create_booking_tfs",
     "PriceInsights",
     "PriceGraphPoint",
+    "TravelWarning",
 ]
