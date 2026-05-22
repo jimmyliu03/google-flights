@@ -1,7 +1,6 @@
 """Generate TFS URL for return flight selection after choosing outbound flight."""
 
 import base64
-import re
 from dataclasses import dataclass
 from typing import Optional, List, Literal, Dict, Any
 from . import flights_pb2 as PB
@@ -527,8 +526,7 @@ def get_return_flight_options(
     This function:
     1. Fetches the return flight selection page using the provided TFS
     2. Parses flight options using JS data source (includes flight numbers)
-    3. Falls back to HTML if JS parsing fails (no flight numbers)
-    4. Returns flight details with all available information
+    3. Returns flight details with the raw itinerary needed by callers
 
     Args:
         return_search_tfs: TFS string from create_return_flight_filter()
@@ -539,9 +537,8 @@ def get_return_flight_options(
              Pass selected_itinerary.tfu to preserve it through the booking flow
 
     Returns:
-        List[ReturnFlightOption]: List of return flight options with available details
-        - JS data source: Includes flight numbers, aircraft type, detailed timing
-        - HTML fallback: All details except flight numbers (if JS parsing fails)
+        List[ReturnFlightOption]: List of return flight options from the JS data source.
+        Includes flight numbers, aircraft type, detailed timing, and raw itinerary.
 
     Raises:
         RuntimeError: If unable to fetch or parse return flights
@@ -568,23 +565,14 @@ def get_return_flight_options(
     """
     from .core import get_flights_from_tfs
 
-    # Decode the search TFS to get outbound flight info
-    search_details = decode_return_flight_tfs(return_search_tfs)
-    outbound_info = search_details['outbound']
-
-    # Try JS data source first (provides flight numbers when it works)
-    result_js = None
-    try:
-        result_js = get_flights_from_tfs(
-            return_search_tfs,
-            data_source='js',
-            mode=mode,
-            currency=currency,
-            tfu=tfu,
-            proxy=proxy,
-        )
-    except:
-        pass  # Will fall back to HTML
+    result_js = get_flights_from_tfs(
+        return_search_tfs,
+        data_source='js',
+        mode=mode,
+        currency=currency,
+        tfu=tfu,
+        proxy=proxy,
+    )
 
     # If JS worked and has the expected structure, use it
     if result_js and hasattr(result_js, 'best'):
@@ -635,66 +623,4 @@ def get_return_flight_options(
 
         return return_options
 
-    # Fall back to HTML data source with force-fallback to render JavaScript
-    result_html = get_flights_from_tfs(
-        return_search_tfs,
-        data_source='html',
-        mode=mode,  # Use the same mode as specified (fallback/force-fallback/local/bright-data)
-        currency=currency,
-        tfu=tfu,
-        proxy=proxy,
-    )
-
-    if result_html is None or not hasattr(result_html, 'flights'):
-        raise RuntimeError("No return flights found")
-
-    return_options = []
-
-    for flight in result_html.flights:
-        # Parse the flight name to extract airline (HTML doesn't provide flight numbers)
-        # Name format is usually like "United" or "Alaska"
-        airline_name = flight.name
-
-        # Parse times from strings like "6:30 AM on Tue, Nov 25"
-        # Departure format: "H:MM AM/PM on Day, Mon DD"
-        dep_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', flight.departure)
-        arr_match = re.search(r'(\d{1,2}:\d{2}\s*(?:AM|PM))', flight.arrival)
-
-        departure_time = dep_match.group(1) if dep_match else flight.departure
-        arrival_time = arr_match.group(1) if arr_match else flight.arrival
-
-        # Parse duration like "6 hr 8 min"
-        duration_match = re.search(r'(\d+)\s*hr\s*(\d+)\s*min', flight.duration)
-        if duration_match:
-            hours = int(duration_match.group(1))
-            minutes = int(duration_match.group(2))
-            duration_minutes = hours * 60 + minutes
-        else:
-            # Try just hours
-            duration_match = re.search(r'(\d+)\s*hr', flight.duration)
-            duration_minutes = int(duration_match.group(1)) * 60 if duration_match else 0
-
-        # Parse price like "$887"
-        price_match = re.search(r'\$?(\d+(?:,\d{3})*(?:\.\d{2})?)', flight.price)
-        price = float(price_match.group(1).replace(',', '')) if price_match else 0.0
-
-        option = ReturnFlightOption(
-            airline=airline_name,
-            flight_number="",  # HTML doesn't provide flight numbers
-            departure_airport=outbound_info['to_airport'],  # Return from outbound destination
-            arrival_airport=outbound_info['from_airport'],  # Return to outbound origin
-            departure_date=search_details['return']['date'] if search_details['return'] else "",
-            departure_time=departure_time,
-            arrival_time=arrival_time,
-            duration_minutes=duration_minutes,
-            stops=flight.stops,
-            total_price=price,
-            currency=currency or "USD",
-            aircraft=None,  # HTML doesn't provide aircraft type
-            tfs="",
-            raw_itinerary=None,
-        )
-
-        return_options.append(option)
-
-    return return_options
+    raise RuntimeError("No return flights found from JS data source")
