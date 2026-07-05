@@ -36,6 +36,18 @@ _WARNING_ENTRY = [
 ]
 
 
+_METADATA_ENTRY_WITH_INNER_LIST = [
+    [
+        None,
+        [[1783215731165430, 16320100, 3694350293], None, None, None, None, [[0]]],
+        0,
+        "c7ZJaraMCuSM5LcP1Z_N4Q0",
+        "HSQ2vRWrHUckAIEgBQBG--------pfbgq40AAAAAGpJtnMCmjXOA",
+    ],
+    [None, ""],
+]
+
+
 def _minimal_itinerary():
     """Return a minimally-structured itinerary el that decodes cleanly."""
     inner_flight = [None] * 23
@@ -119,9 +131,28 @@ def test_clean_response_has_empty_warnings():
 def test_is_itinerary_entry_discriminator():
     assert _is_itinerary_entry(_minimal_itinerary()) is True
     assert _is_itinerary_entry(_WARNING_ENTRY) is False
+    assert _is_itinerary_entry(_METADATA_ENTRY_WITH_INNER_LIST) is False
     assert _is_itinerary_entry([]) is False
     assert _is_itinerary_entry(None) is False
     assert _is_itinerary_entry("a string") is False
+
+
+def test_metadata_entry_with_inner_list_does_not_crash_decoder():
+    """Repro: non-displayable metadata row passed the old el[0] list check.
+
+    The row has no flight legs and no [0][5] summary departure time. It should
+    be skipped, not repaired with synthetic time data and not allowed to crash
+    the whole response.
+    """
+    root = _root_with(
+        best_entries=[_METADATA_ENTRY_WITH_INNER_LIST, _minimal_itinerary()],
+        other_entries=[],
+    )
+
+    result = ResultDecoder.decode(root)
+
+    assert len(result.best) == 1
+    assert result.best[0].departure_airport == "WAW"
 
 
 def test_parse_travel_warning_extracts_fields():

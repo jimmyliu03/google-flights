@@ -263,14 +263,87 @@ class DecodedResult:
     warnings: List[TravelWarning] = field(default_factory=list)
 
 
-# Discriminate itinerary entries from "decoration" entries (warning dialogs,
-# ads, etc.) Google occasionally injects as siblings of itineraries inside
-# data[2][0] / data[3][0]. A real itinerary always has its inner protobuf
-# list at index 0; a decoration entry has an int type-marker at index 0
-# (e.g. 12 for travel-restriction advisories), which would otherwise
-# trigger ``Found non list type while trying to decode [0, 0]``.
+def _list_has(root: Any, path: DecodePath) -> bool:
+    it = root
+    for index in path:
+        if not isinstance(it, list) or index >= len(it):
+            return False
+        it = it[index]
+    return True
+
+
+def _is_date(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) >= 3
+        and all(isinstance(x, int) for x in value[:3])
+    )
+
+
+def _is_time(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) >= 1
+        and isinstance(value[0], int)
+    )
+
+
+def _is_flight_entry(el: Any) -> bool:
+    if not isinstance(el, list):
+        return False
+    if not all(_list_has(el, [idx]) for idx in (2, 3, 4, 5, 6, 8, 10, 11, 14, 15, 17, 20, 21, 22)):
+        return False
+    if not isinstance(el[3], str) or not isinstance(el[5], str):
+        return False
+    if not _is_time(el[8]) or not _is_time(el[10]):
+        return False
+    if not _is_date(el[20]) or not _is_date(el[21]):
+        return False
+    airline = el[22]
+    return (
+        isinstance(airline, list)
+        and len(airline) > 3
+        and isinstance(airline[0], str)
+        and isinstance(airline[1], (str, int))
+        and isinstance(airline[3], str)
+    )
+
+
+# Discriminate displayable itinerary entries from "decoration" and metadata
+# entries Google occasionally injects as siblings inside data[2][0] / data[3][0].
+# A real itinerary has every path consumed by ItineraryDecoder plus at least one
+# displayable leg. Metadata rows can still have el[0] as a list, so checking only
+# that first element is not sufficient and caused the [0, 5] crash.
 def _is_itinerary_entry(el: Any) -> bool:
-    return isinstance(el, list) and len(el) > 0 and isinstance(el[0], list)
+    if not (
+        isinstance(el, list)
+        and len(el) > 1
+        and isinstance(el[0], list)
+        and isinstance(el[1], list)
+        and len(el[1]) > 1
+    ):
+        return False
+
+    summary = el[0]
+    if not all(_list_has(summary, [idx]) for idx in (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 13)):
+        return False
+    if not isinstance(summary[0], str):
+        return False
+    if not isinstance(summary[1], list):
+        return False
+    if not isinstance(summary[2], list) or len(summary[2]) == 0:
+        return False
+    if not isinstance(summary[3], str) or not isinstance(summary[6], str):
+        return False
+    if not _is_date(summary[4]) or not _is_time(summary[5]):
+        return False
+    if not _is_date(summary[7]) or not _is_time(summary[8]):
+        return False
+    if not isinstance(summary[9], int):
+        return False
+    if not isinstance(summary[13], list):
+        return False
+    return all(_is_flight_entry(flight) for flight in summary[2])
 
 
 def _parse_travel_warning(el: Any) -> Optional[TravelWarning]:
@@ -388,7 +461,16 @@ class ItineraryDecoder(Decoder):
         out: List[Itinerary] = []
         for i, el in enumerate(root):
             if _is_itinerary_entry(el):
-                out.append(Itinerary(**cls.decode_el(NLData(el))))
+                try:
+                    out.append(Itinerary(**cls.decode_el(NLData(el))))
+                except Exception as exc:
+                    preview = repr(el)[:200]
+                    print(
+                        f"[fast_flights] ItineraryDecoder skipped undecodable "
+                        f"entry at index {i}: {type(exc).__name__}: {exc}; {preview}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                 continue
             if _parse_travel_warning(el) is None:
                 preview = repr(el)[:200]
