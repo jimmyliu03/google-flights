@@ -1,5 +1,6 @@
 from .cookies_impl import Cookies
 from .core import get_flights_from_filter, get_flights, get_flights_from_tfs
+from .exceptions import GoogleFlightsErrorResponse
 from .filter import create_filter
 from .flights_impl import Airport, FlightData, Passengers, TFSData
 from .decoder import PriceInsights, PriceGraphPoint, TravelWarning
@@ -36,4 +37,5 @@ __all__ = [
     "PriceInsights",
     "PriceGraphPoint",
     "TravelWarning",
+    "GoogleFlightsErrorResponse",
 ]
