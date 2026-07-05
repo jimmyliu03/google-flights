@@ -1,5 +1,7 @@
-import re
+import hashlib
 import json
+import re
+import sys
 from typing import List, Literal, Optional, Union, overload
 
 from selectolax.lexbor import LexborHTMLParser, LexborNode
@@ -19,6 +21,44 @@ from .primp import Client, Response
 
 
 DataSource = Literal['html', 'js']
+
+_GOOGLE_ERROR_RESPONSE_MARKER = "type.googleapis.com/travel.frontend.flights.ErrorResponse"
+_RAW_ERROR_RESPONSE_CHUNK_SIZE = 8000
+
+
+def _dump_google_error_response_payload(raw_data_json: str) -> str:
+    """Emit exact Google ErrorResponse ``ds:1`` JSON for postmortem debugging.
+
+    Vercel can truncate large individual log lines, so the payload is printed
+    in deterministic chunks with a checksum. This only fires after the exact
+    ErrorResponse protobuf type URL is present in the parsed ``script.ds:1``
+    payload; normal flight result payloads are never dumped.
+
+    Returns the SHA-256 digest so callers can include it in the raised error.
+    """
+    digest = hashlib.sha256(raw_data_json.encode("utf-8")).hexdigest()
+    total = (len(raw_data_json) + _RAW_ERROR_RESPONSE_CHUNK_SIZE - 1) // _RAW_ERROR_RESPONSE_CHUNK_SIZE
+    print(
+        "[fast_flights][ERROR_RESPONSE_RAW][BEGIN] "
+        f"bytes={len(raw_data_json.encode('utf-8'))} chars={len(raw_data_json)} "
+        f"sha256={digest} chunks={total}",
+        file=sys.stderr,
+        flush=True,
+    )
+    for index in range(total):
+        start = index * _RAW_ERROR_RESPONSE_CHUNK_SIZE
+        chunk = raw_data_json[start:start + _RAW_ERROR_RESPONSE_CHUNK_SIZE]
+        print(
+            f"[fast_flights][ERROR_RESPONSE_RAW][{index + 1}/{total}] {chunk}",
+            file=sys.stderr,
+            flush=True,
+        )
+    print(
+        f"[fast_flights][ERROR_RESPONSE_RAW][END] sha256={digest}",
+        file=sys.stderr,
+        flush=True,
+    )
+    return digest
 
 def fetch(params: dict, proxy: Optional[str] = None) -> Response:
     client = Client(impersonate="chrome_126", verify=False, proxy=proxy)
@@ -248,7 +288,14 @@ def parse_response(
 
         match = re.search(r'^.*?\{.*?data:(\[.*\]).*\}', script)
         assert match, 'Malformed js data, cannot find script data'
-        data = json.loads(match.group(1))
+        raw_data_json = match.group(1)
+        if _GOOGLE_ERROR_RESPONSE_MARKER in raw_data_json:
+            digest = _dump_google_error_response_payload(raw_data_json)
+            raise RuntimeError(
+                "Google Flights returned ErrorResponse payload "
+                f"(raw ds:1 dumped to stderr; sha256={digest})"
+            )
+        data = json.loads(raw_data_json)
         return ResultDecoder.decode(data, tfu=tfu) if data is not None else None
 
     flights = []
