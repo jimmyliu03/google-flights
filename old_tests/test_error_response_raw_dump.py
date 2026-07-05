@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from fast_flights import core
+from fast_flights import GoogleFlightsErrorResponse, core
 
 
 class _Response:
@@ -42,11 +42,18 @@ def test_error_response_payload_is_dumped_before_decoding(monkeypatch, capsys):
 
     monkeypatch.setattr(core.ResultDecoder, "decode", fail_if_called)
 
-    with pytest.raises(RuntimeError, match="Google Flights returned ErrorResponse payload"):
+    with pytest.raises(
+        GoogleFlightsErrorResponse,
+        match="Google Flights returned ErrorResponse payload",
+    ) as exc_info:
         core.parse_response(_Response(html), "js")
 
     stderr = capsys.readouterr().err
     digest = hashlib.sha256(raw_payload.encode("utf-8")).hexdigest()
+    exc = exc_info.value
+    assert exc.sha256 == digest
+    assert exc.byte_count == len(raw_payload.encode("utf-8"))
+    assert exc.char_count == len(raw_payload)
     assert decode_called is False
     assert f"sha256={digest}" in stderr
     assert "[fast_flights][ERROR_RESPONSE_RAW][BEGIN]" in stderr

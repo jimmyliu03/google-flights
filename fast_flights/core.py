@@ -7,6 +7,7 @@ from typing import List, Literal, Optional, Union, overload
 from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from .decoder import DecodedResult, ResultDecoder
+from .exceptions import GoogleFlightsErrorResponse
 from .schema import Flight, Result
 from .flights_impl import FlightData, Passengers
 from .filter import TFSData
@@ -291,9 +292,10 @@ def parse_response(
         raw_data_json = match.group(1)
         if _GOOGLE_ERROR_RESPONSE_MARKER in raw_data_json:
             digest = _dump_google_error_response_payload(raw_data_json)
-            raise RuntimeError(
-                "Google Flights returned ErrorResponse payload "
-                f"(raw ds:1 dumped to stderr; sha256={digest})"
+            raise GoogleFlightsErrorResponse(
+                sha256=digest,
+                byte_count=len(raw_data_json.encode("utf-8")),
+                char_count=len(raw_data_json),
             )
         data = json.loads(raw_data_json)
         return ResultDecoder.decode(data, tfu=tfu) if data is not None else None
