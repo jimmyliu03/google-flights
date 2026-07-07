@@ -281,11 +281,13 @@ def _is_date(value: Any) -> bool:
 
 
 def _is_time(value: Any) -> bool:
-    return (
-        isinstance(value, list)
-        and len(value) >= 1
-        and isinstance(value[0], int)
-    )
+    if not isinstance(value, list) or len(value) < 1:
+        return False
+    if isinstance(value[0], int):
+        return True
+    # Midnight arrivals can encode the hour as null and the minute at index 1;
+    # normalize_time decodes this as 00:mm, so the guard should admit it too.
+    return value[0] is None and len(value) > 1 and isinstance(value[1], int)
 
 
 def _is_flight_entry(el: Any) -> bool:
@@ -341,7 +343,9 @@ def _is_itinerary_entry(el: Any) -> bool:
         return False
     if not isinstance(summary[9], int):
         return False
-    if not isinstance(summary[13], list):
+    # Nonstop itineraries have no layovers and Google encodes that field as
+    # null; DecoderKey already normalizes null layover lists to [].
+    if summary[13] is not None and not isinstance(summary[13], list):
         return False
     return all(_is_flight_entry(flight) for flight in summary[2])
 
