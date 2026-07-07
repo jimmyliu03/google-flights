@@ -36,6 +36,9 @@ _WARNING_ENTRY = [
 ]
 
 
+_UNSET = object()
+
+
 _METADATA_ENTRY_WITH_INNER_LIST = [
     [
         None,
@@ -48,7 +51,7 @@ _METADATA_ENTRY_WITH_INNER_LIST = [
 ]
 
 
-def _minimal_itinerary():
+def _minimal_itinerary(*, layovers=_UNSET):
     """Return a minimally-structured itinerary el that decodes cleanly."""
     inner_flight = [None] * 23
     inner_flight[3] = "WAW"  # departure_airport
@@ -76,7 +79,7 @@ def _minimal_itinerary():
     main[7] = [2026, 6, 12]
     main[8] = [13, 0]
     main[9] = 150
-    main[13] = []  # layovers
+    main[13] = [] if layovers is _UNSET else layovers
 
     summary_b64 = ""  # ItinerarySummary.from_b64("") is tolerated downstream
     return [main, [None, summary_b64]]
@@ -130,11 +133,25 @@ def test_clean_response_has_empty_warnings():
 
 def test_is_itinerary_entry_discriminator():
     assert _is_itinerary_entry(_minimal_itinerary()) is True
+    assert _is_itinerary_entry(_minimal_itinerary(layovers=None)) is True
     assert _is_itinerary_entry(_WARNING_ENTRY) is False
     assert _is_itinerary_entry(_METADATA_ENTRY_WITH_INNER_LIST) is False
     assert _is_itinerary_entry([]) is False
     assert _is_itinerary_entry(None) is False
     assert _is_itinerary_entry("a string") is False
+
+
+def test_nonstop_itinerary_with_null_layovers_decodes_as_empty_layovers():
+    """Google encodes nonstop itinerary layovers as null, not an empty list."""
+    root = _root_with(
+        best_entries=[_minimal_itinerary(layovers=None)],
+        other_entries=[],
+    )
+
+    result = ResultDecoder.decode(root)
+
+    assert len(result.best) == 1
+    assert result.best[0].layovers == []
 
 
 def test_metadata_entry_with_inner_list_does_not_crash_decoder():

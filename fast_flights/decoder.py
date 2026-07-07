@@ -341,7 +341,9 @@ def _is_itinerary_entry(el: Any) -> bool:
         return False
     if not isinstance(summary[9], int):
         return False
-    if not isinstance(summary[13], list):
+    # Nonstop itineraries have no layovers and Google encodes that field as
+    # null; DecoderKey already normalizes null layover lists to [].
+    if summary[13] is not None and not isinstance(summary[13], list):
         return False
     return all(_is_flight_entry(flight) for flight in summary[2])
 
