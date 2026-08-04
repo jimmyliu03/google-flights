@@ -85,7 +85,11 @@ def test_initial_multi_city_filter_supports_five_legs():
 
     info = PB.Info()
     info.ParseFromString(base64.urlsafe_b64decode(tfs.as_b64() + b"=" * (-len(tfs.as_b64()) % 4)))
-    assert info.trip == PB.Trip.MULTI_CITY
+    # Google represents multi-city as ONE_WAY + field_19=3. This fixture was
+    # captured from the live multi-city form; encoding the enum's MULTI_CITY
+    # value redirects to the generic Flights page instead of returning rows.
+    assert info.trip == PB.Trip.ONE_WAY
+    assert info.field_19 == 3
     assert len(info.data) == 5
 
 
@@ -93,7 +97,7 @@ def test_next_leg_filter_encodes_selected_prefix_and_filters():
     query = decode(create_next_leg_filter(legs=ROUTES, selected_legs=SELECTED))
 
     assert query.step == 3
-    assert query.field_19 == 2
+    assert query.field_19 == 3
     assert len(query.legs) == 3
     assert query.legs[0].location_filter_1.filter_type == 2
     assert [segment.flight_number for segment in query.legs[1].selected_flight] == [

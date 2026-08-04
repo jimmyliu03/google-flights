@@ -186,7 +186,7 @@ def _create_itinerary_tfs(
     query.field_14 = 1
     query.field_16.value = -1
     query.field_16.field_2 = 2
-    query.field_19 = 1 if trip == "round-trip" else 2
+    query.field_19 = 1 if trip == "round-trip" else 3
     if exclude_basic_economy:
         query.field_25 = 1
 

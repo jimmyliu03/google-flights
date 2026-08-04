@@ -202,10 +202,14 @@ class TFSData:
         # Set required root fields
         info.field_1 = 28  # Always 28
 
-        # Google uses non-standard trip values: 2 for both one-way and round-trip
-        # This doesn't match the protobuf enum (ONE_WAY=1, ROUND_TRIP=2)
+        # Google uses non-standard trip values. A multi-city form is encoded
+        # as ONE_WAY (1) with field_19=3; the number of FlightData records is
+        # what makes it multi-city. Ordinary one-way and round-trip both use
+        # the numeric value 2 here.
         if self.trip == PB.Trip.ONE_WAY:
             info.trip = 2  # Google expects 2 for one-way (not 1)
+        elif self.trip == PB.Trip.MULTI_CITY:
+            info.trip = 1
         else:
             info.trip = self.trip  # ROUND_TRIP is already 2
 
@@ -226,10 +230,12 @@ class TFSData:
         # Both one-way and round-trip use the same 11-byte format
         info.field_16 = bytes([0x08, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01])
 
-        # Set field_19: 1 for round-trip, 2 for one-way
+        # field_19 is Google's actual trip discriminator.
         if self.trip == PB.Trip.ROUND_TRIP:
             info.field_19 = 1
-        else:  # ONE_WAY or MULTI_CITY
+        elif self.trip == PB.Trip.MULTI_CITY:
+            info.field_19 = 3
+        else:
             info.field_19 = 2
 
         # Set field_25 (exclude_basic_economy)

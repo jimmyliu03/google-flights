@@ -60,7 +60,7 @@ message Info {
   Seat seat = 9;
   int32 field_14 = 14;  // Always 1
   bytes field_16 = 16;  // Raw bytes for complex filter settings (Google's format is non-standard)
-  int32 field_19 = 19;  // Trip-related field (1 or 2, changes with exclude_basic_economy)
+  int32 field_19 = 19;  // Trip discriminator: 1 round-trip, 2 one-way, 3 multi-city
   optional int32 exclude_basic_economy = 25;  // 0 or 1
 }
 
