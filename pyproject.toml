@@ -22,6 +22,7 @@ dependencies = [
   "primp",
   "protobuf>=5.27.0",
   "selectolax",
+  "typing-extensions>=4.12.0",
 ]
 
 [project.optional-dependencies]

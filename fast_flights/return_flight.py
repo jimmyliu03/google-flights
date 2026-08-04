@@ -2,8 +2,255 @@
 
 import base64
 from dataclasses import dataclass
-from typing import Optional, List, Literal, Dict, Any
+from datetime import date as date_type
+from typing import Optional, List, Literal, Dict, Any, Sequence
 from . import flights_pb2 as PB
+
+
+_SEAT_MAP = {
+    "economy": PB.Seat.ECONOMY,
+    "premium-economy": PB.Seat.PREMIUM_ECONOMY,
+    "business": PB.Seat.BUSINESS,
+    "first": PB.Seat.FIRST,
+}
+
+
+def _require_text(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value.strip()
+
+
+def _location_type(value: str) -> int:
+    return 2 if value.startswith("/m/") else 1
+
+
+def _validate_routes(legs: Sequence[Dict[str, Any]], *, allow_one_way: bool) -> None:
+    minimum = 1 if allow_one_way else 2
+    if not minimum <= len(legs) <= 5:
+        raise ValueError(f"itinerary must contain between {minimum} and 5 legs")
+
+    previous_date: Optional[date_type] = None
+    for index, leg in enumerate(legs):
+        value = _require_text(leg.get("date"), f"legs[{index}].date")
+        try:
+            current_date = date_type.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError(f"legs[{index}].date must use YYYY-MM-DD format") from exc
+        if previous_date is not None and current_date < previous_date:
+            raise ValueError("itinerary leg dates must be nondecreasing")
+        previous_date = current_date
+        _require_text(leg.get("from_airport"), f"legs[{index}].from_airport")
+        _require_text(leg.get("to_airport"), f"legs[{index}].to_airport")
+
+
+def _selection_segments(
+    route: Dict[str, Any], selection: Dict[str, Any], index: int
+) -> List[Dict[str, str]]:
+    raw_segments = selection.get("segments")
+    if raw_segments is not None:
+        if not isinstance(raw_segments, list) or not raw_segments:
+            raise ValueError(f"selected_legs[{index}].segments must be a non-empty list")
+        segments = raw_segments
+    else:
+        connecting = selection.get("connecting_segments") or []
+        if not isinstance(connecting, list):
+            raise ValueError(f"selected_legs[{index}].connecting_segments must be a list")
+        selected_from = _require_text(
+            selection.get("from_airport") or route.get("selected_from_airport") or route.get("from_airport"),
+            f"selected_legs[{index}].from_airport",
+        )
+        selected_to = _require_text(
+            selection.get("to_airport") or route.get("selected_to_airport") or route.get("to_airport"),
+            f"selected_legs[{index}].to_airport",
+        )
+        first_to = connecting[0].get("from") if connecting else selected_to
+        segments = [
+            {
+                "from": selected_from,
+                "to": first_to,
+                "date": selection.get("date") or route["date"],
+                "airline": selection.get("airline"),
+                "flight_number": selection.get("flight_number"),
+            },
+            *connecting,
+        ]
+
+    normalized: List[Dict[str, str]] = []
+    for segment_index, segment in enumerate(segments):
+        if not isinstance(segment, dict):
+            raise ValueError(
+                f"selected_legs[{index}].segments[{segment_index}] must be an object"
+            )
+        normalized.append(
+            {
+                "from": _require_text(
+                    segment.get("from") or segment.get("from_airport"),
+                    f"selected_legs[{index}].segments[{segment_index}].from",
+                ),
+                "to": _require_text(
+                    segment.get("to") or segment.get("to_airport"),
+                    f"selected_legs[{index}].segments[{segment_index}].to",
+                ),
+                "date": _require_text(
+                    segment.get("date") or route.get("date"),
+                    f"selected_legs[{index}].segments[{segment_index}].date",
+                ),
+                "airline": _require_text(
+                    segment.get("airline"),
+                    f"selected_legs[{index}].segments[{segment_index}].airline",
+                ),
+                "flight_number": _require_text(
+                    segment.get("flight_number"),
+                    f"selected_legs[{index}].segments[{segment_index}].flight_number",
+                ),
+            }
+        )
+    return normalized
+
+
+def _add_itinerary_leg(
+    query: Any,
+    route: Dict[str, Any],
+    selection: Optional[Dict[str, Any]],
+    index: int,
+) -> None:
+    leg = query.legs.add()
+    leg.date = route["date"]
+
+    if selection is not None:
+        for segment in _selection_segments(route, selection, index):
+            selected = leg.selected_flight.add()
+            selected.from_airport = segment["from"]
+            selected.date = segment["date"]
+            selected.to_airport = segment["to"]
+            selected.airline = segment["airline"]
+            selected.flight_number = segment["flight_number"]
+
+    max_stops = route.get("max_stops")
+    if max_stops is not None:
+        if not isinstance(max_stops, int) or not 0 <= max_stops <= 2:
+            raise ValueError(f"legs[{index}].max_stops must be 0, 1, 2, or null")
+        leg.max_stops = max_stops
+
+    for field in ("airlines", "airlines_exclude"):
+        values = route.get(field)
+        if values is not None:
+            if not isinstance(values, list) or not all(
+                isinstance(value, str) and value for value in values
+            ):
+                raise ValueError(f"legs[{index}].{field} must be a list of airline codes")
+            getattr(leg, field).extend(value.upper() for value in values)
+
+    restrictions = route.get("time_restrictions")
+    if restrictions is not None:
+        if not isinstance(restrictions, dict):
+            raise ValueError(f"legs[{index}].time_restrictions must be an object")
+        for field, default in (
+            ("earliest_departure", 0),
+            ("latest_departure", 23),
+            ("earliest_arrival", 0),
+            ("latest_arrival", 23),
+        ):
+            value = restrictions.get(field, default)
+            if not isinstance(value, int) or not 0 <= value <= 23:
+                raise ValueError(f"legs[{index}].time_restrictions.{field} must be 0..23")
+            setattr(leg, field, value)
+
+    from_airport = route["from_airport"]
+    to_airport = route["to_airport"]
+    leg.location_filter_1.filter_type = _location_type(from_airport)
+    leg.location_filter_1.value = from_airport
+    leg.location_filter_2.filter_type = _location_type(to_airport)
+    leg.location_filter_2.value = to_airport
+
+
+def _create_itinerary_tfs(
+    *,
+    legs: Sequence[Dict[str, Any]],
+    selected_legs: Sequence[Dict[str, Any]],
+    trip: Literal["one-way", "round-trip", "multi-city"],
+    seat: Literal["economy", "premium-economy", "business", "first"],
+    exclude_basic_economy: bool,
+) -> str:
+    _validate_routes(legs, allow_one_way=trip == "one-way")
+    if len(selected_legs) > len(legs):
+        raise ValueError("selected_legs cannot be longer than legs")
+
+    query = PB.ReturnFlightQuery()
+    query.query_type = 28
+    # Google advances this value once for every selected itinerary leg.
+    query.step = len(selected_legs) + 1
+    query.field_8 = 1
+    query.seat = _SEAT_MAP[seat]
+    query.field_14 = 1
+    query.field_16.value = -1
+    query.field_16.field_2 = 2
+    query.field_19 = 1 if trip == "round-trip" else 2
+    if exclude_basic_economy:
+        query.field_25 = 1
+
+    for index, route in enumerate(legs):
+        _add_itinerary_leg(
+            query,
+            route,
+            selected_legs[index] if index < len(selected_legs) else None,
+            index,
+        )
+
+    serialized = query.SerializeToString()
+    return base64.urlsafe_b64encode(serialized).rstrip(b"=").decode("utf-8")
+
+
+def create_next_leg_filter(
+    *,
+    legs: Sequence[Dict[str, Any]],
+    selected_legs: Sequence[Dict[str, Any]],
+    trip: Literal["round-trip", "multi-city"] = "multi-city",
+    seat: Literal["economy", "premium-economy", "business", "first"] = "economy",
+    exclude_basic_economy: bool = False,
+) -> str:
+    """Build the continuation TFS for the next unselected itinerary leg.
+
+    ``legs`` contains the complete requested itinerary. ``selected_legs`` must
+    be its contiguous selected prefix and must leave at least one leg open.
+    """
+    if not 1 <= len(selected_legs) < len(legs):
+        raise ValueError("selected_legs must be a non-empty prefix shorter than legs")
+    if trip == "round-trip" and len(legs) != 2:
+        raise ValueError("round-trip continuation requires exactly two legs")
+    return _create_itinerary_tfs(
+        legs=legs,
+        selected_legs=selected_legs,
+        trip=trip,
+        seat=seat,
+        exclude_basic_economy=exclude_basic_economy,
+    )
+
+
+def create_itinerary_booking_tfs(
+    *,
+    legs: Sequence[Dict[str, Any]],
+    trip: Literal["one-way", "round-trip", "multi-city"] = "multi-city",
+    seat: Literal["economy", "premium-economy", "business", "first"] = "economy",
+    exclude_basic_economy: bool = False,
+) -> str:
+    """Build a booking TFS with every itinerary leg selected.
+
+    Each leg combines route fields (``date``, ``from_airport``,
+    ``to_airport`` and optional filters) with a selection described either by
+    ``airline``/``flight_number`` plus ``connecting_segments``, or by a full
+    ``segments`` list.
+    """
+    if trip == "round-trip" and len(legs) != 2:
+        raise ValueError("round-trip booking requires exactly two legs")
+    return _create_itinerary_tfs(
+        legs=legs,
+        selected_legs=legs,
+        trip=trip,
+        seat=seat,
+        exclude_basic_economy=exclude_basic_economy,
+    )
 
 
 def create_return_flight_filter(

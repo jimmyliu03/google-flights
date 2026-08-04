@@ -93,6 +93,12 @@ message LegWithSelection {
   string date = 2;
   repeated SelectedFlight selected_flight = 4;
   optional int32 max_stops = 5;
+  repeated string airlines = 6;
+  repeated string airlines_exclude = 7;
+  optional int32 earliest_departure = 8;
+  optional int32 latest_departure = 9;
+  optional int32 earliest_arrival = 10;
+  optional int32 latest_arrival = 11;
   LocationFilter location_filter_1 = 13;
   LocationFilter location_filter_2 = 14;
 }
