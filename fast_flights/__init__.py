@@ -13,6 +13,8 @@ from .return_flight import (
     decode_return_flight_tfs,
     ReturnFlightOption,
     create_booking_tfs,
+    create_next_leg_filter,
+    create_itinerary_booking_tfs,
 )
 
 __all__ = [
@@ -34,6 +36,8 @@ __all__ = [
     "decode_return_flight_tfs",
     "ReturnFlightOption",
     "create_booking_tfs",
+    "create_next_leg_filter",
+    "create_itinerary_booking_tfs",
     "PriceInsights",
     "PriceGraphPoint",
     "TravelWarning",

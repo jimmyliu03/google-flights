@@ -1,3 +1,4 @@
+from datetime import date as date_type
 from typing import Literal, List, Optional
 from .flights_impl import FlightData, Passengers, TFSData
 
@@ -20,6 +21,20 @@ def create_filter(
         max_stops (int, optional): Maximum number of stops. Defaults to None.
         exclude_basic_economy (bool, optional): Exclude basic economy fares. Defaults to False.
     """
+    if trip == "multi-city":
+        if not 2 <= len(flight_data) <= 5:
+            raise ValueError("multi-city searches require between 2 and 5 legs")
+        parsed_dates = []
+        for index, leg in enumerate(flight_data):
+            try:
+                parsed_dates.append(date_type.fromisoformat(leg.date))
+            except ValueError as exc:
+                raise ValueError(
+                    f"flight_data[{index}].date must use YYYY-MM-DD format"
+                ) from exc
+        if parsed_dates != sorted(parsed_dates):
+            raise ValueError("multi-city leg dates must be nondecreasing")
+
     # Only fan the top-level max_stops out to each leg when the caller
     # actually provided one. The previous unconditional override silently
     # wiped per-leg FlightData(max_stops=N) settings whenever the caller

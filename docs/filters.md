@@ -25,7 +25,7 @@ data = FlightData(
 )
 ```
 
-Note that for `round-trip` trips, you'll need to specify more than one `FlightData` object for the `flight_data` parameter.
+Round trips need two `FlightData` objects. Multi-city filters need between two and five objects with nondecreasing dates.
 
 The values in `airlines` has to be a valid 2 letter IATA airline code, case insensitive. They can also be one of `SKYTEAM`, `STAR_ALLIANCE` or `ONEWORLD`. Note that the server side currently ignores the `airlines` parameter added to the `FlightData`s of all the flights which is not the first flight. In other words, if you have two `FlightData`s for a `round-trip` trip: JFK-MIA and MIA-JFK, and you add `airlines` parameter to both `FlightData`s, only the first `airlines` will be considered for the whole search. So technically `airlines` could be a better fit as a parameter for `TFSData` but adding to `FlightData` is the correct usage because if the backend changes and brings more flexibility to filter with different airlines for different flight segments in the future, which it should, this will come in handy.
 
@@ -34,11 +34,11 @@ Either one of:
 
 - `round-trip`
 - `one-way`
-- :material-alert: `multi-city` (unimplemented)
+- `multi-city`
 
 ...can be used.
 
-If you're using `round-trip`, see [FlightData](#flightdata).
+If you're using `round-trip` or `multi-city`, see [FlightData](#flightdata). Multi-city selection is stepwise: create the initial token with `create_filter()`, then call `create_next_multi_city_filter()` with the chosen flights to encode each continuation or booking token. The public Google page currently client-renders initial multi-city results, so HTML result parsing alone is not sufficient for that first step.
 
 ## Seat
 Now it's time to see who's the people who got $$$ dollar signs in their names. Either one of:

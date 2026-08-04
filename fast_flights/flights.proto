@@ -41,7 +41,7 @@ enum Trip {
   UNKNOWN_TRIP = 0;
   ONE_WAY = 1;
   ROUND_TRIP = 2;
-  MULTI_CITY = 3; // not implemented
+  MULTI_CITY = 3;
 }
 
 enum Passenger {
@@ -60,7 +60,7 @@ message Info {
   Seat seat = 9;
   int32 field_14 = 14;  // Always 1
   bytes field_16 = 16;  // Raw bytes for complex filter settings (Google's format is non-standard)
-  int32 field_19 = 19;  // Trip-related field (1 or 2, changes with exclude_basic_economy)
+  int32 field_19 = 19;  // Trip discriminator: 1 round-trip, 2 one-way, 3 multi-city
   optional int32 exclude_basic_economy = 25;  // 0 or 1
 }
 
@@ -93,6 +93,12 @@ message LegWithSelection {
   string date = 2;
   repeated SelectedFlight selected_flight = 4;
   optional int32 max_stops = 5;
+  repeated string airlines = 6;
+  repeated string airlines_exclude = 7;
+  optional int32 earliest_departure = 8;
+  optional int32 latest_departure = 9;
+  optional int32 earliest_arrival = 10;
+  optional int32 latest_arrival = 11;
   LocationFilter location_filter_1 = 13;
   LocationFilter location_filter_2 = 14;
 }
