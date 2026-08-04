@@ -41,7 +41,7 @@ enum Trip {
   UNKNOWN_TRIP = 0;
   ONE_WAY = 1;
   ROUND_TRIP = 2;
-  MULTI_CITY = 3; // not implemented
+  MULTI_CITY = 3;
 }
 
 enum Passenger {

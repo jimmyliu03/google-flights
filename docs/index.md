@@ -33,7 +33,7 @@ print(result)
 ```
 
 1. :material-airport: This specifies the (desired) date of departure for the outbound flight. Make sure to change the date!
-2. :fontawesome-solid-person-walking-luggage: This specifies the trip type (`round-trip` or `one-way`). Note that `multi-city` is **not yet** supported. Note that if you're having a `round-trip`, you need to add more than one item of flight data (in other words, 2+).
+2. :fontawesome-solid-person-walking-luggage: This specifies the trip type (`round-trip`, `one-way`, or `multi-city`). Round trips require two flight-data items. Multi-city filters require two to five date-ordered items and can be advanced with `create_next_multi_city_filter()` after each selection. Google currently serves the initial multi-city page as a client-rendered shell, so consumers that need parsed results should pair these tokens with a shopping-data backend.
 3. :material-seat: Money-spending time! This specifies the seat type, which is `economy`, `premium-economy`, `business`, or `first`.
 4. :fontawesome-solid-people-line: Nice interface, eh? This specifies the number of a specific passenger type.
 5. :fontawesome-solid-person-falling: Sometimes, the data is built on demand on the client-side, while the core of `fast-flights` is built around scrapers from the ground up. We support fallbacks that run Playwright serverless functions to fetch for us instead. You could either specify `common` (default), `fallback` (recommended), or `force-fallback` (100% serverless Playwright). You do not need to install Playwright in order for this to work.
@@ -144,4 +144,3 @@ Feel free to contribute! Though I won't be online that often, I'll try my best t
 - @NickJLange helped add a LICENSE file in #38
 - @Lim0H (#39) and @andreaiorio (#41) fixed `primp` client issues.
 - @kiinami (#43) added local Playwright support
-
