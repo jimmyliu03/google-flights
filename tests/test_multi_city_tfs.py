@@ -98,6 +98,8 @@ def test_next_leg_filter_encodes_selected_prefix_and_filters():
 
     assert query.step == 3
     assert query.field_19 == 3
+    assert query.field_16.value == -(1 << 63)
+    assert query.field_16.field_2 == 0
     assert len(query.legs) == 3
     assert query.legs[0].location_filter_1.filter_type == 2
     assert [segment.flight_number for segment in query.legs[1].selected_flight] == [
@@ -110,6 +112,53 @@ def test_next_leg_filter_encodes_selected_prefix_and_filters():
     assert query.legs[1].latest_departure == 17
     assert query.legs[1].earliest_arrival == 0
     assert query.legs[1].latest_arrival == 23
+
+
+def test_next_leg_filter_matches_live_open_jaw_google_url():
+    routes = [
+        {
+            "date": "2026-08-21",
+            "from_airport": "SFO",
+            "to_airport": "/m/07dfk",
+        },
+        {
+            "date": "2026-08-25",
+            "from_airport": "/m/0dqyw",
+            "to_airport": "LAX",
+        },
+    ]
+    selected = [{
+        "segments": [
+            {
+                "from": "SFO",
+                "to": "LAX",
+                "date": "2026-08-21",
+                "airline": "AA",
+                "flight_number": "6274",
+            },
+            {
+                "from": "LAX",
+                "to": "HND",
+                "date": "2026-08-21",
+                "airline": "AA",
+                "flight_number": "27",
+            },
+        ],
+    }]
+
+    token = create_next_leg_filter(
+        legs=routes,
+        selected_legs=selected,
+        trip="multi-city",
+        seat="economy",
+        exclude_basic_economy=True,
+    )
+
+    assert token == (
+        "CBwQAhplEgoyMDI2LTA4LTIxIiAKA1NGTxIKMjAyNi0wOC0yMRoDTEFYKgJBQTIENjI3NCIe"
+        "CgNMQVgSCjIwMjYtMDgtMjEaA0hORCoCQUEyAjI3agcIARIDU0ZPcgwIAhIIL20vMDdkZmsa"
+        "IxIKMjAyNi0wOC0yNWoMCAISCC9tLzBkcXl3cgcIARIDTEFYQAFIAXABggELCP___________wGYAQPIAQE"
+    )
 
 
 def test_itinerary_booking_tfs_selects_every_leg():

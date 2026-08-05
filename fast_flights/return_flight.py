@@ -184,8 +184,14 @@ def _create_itinerary_tfs(
     query.field_8 = 1
     query.seat = _SEAT_MAP[seat]
     query.field_14 = 1
-    query.field_16.value = -1
-    query.field_16.field_2 = 2
+    if trip == "multi-city":
+        # Captured from the live Google Flights multi-city continuation URL.
+        # Multi-city uses the minimum signed int64 and omits field_2; the
+        # round-trip (-1, 2) shape silently produces no next-leg inventory.
+        query.field_16.value = -(1 << 63)
+    else:
+        query.field_16.value = -1
+        query.field_16.field_2 = 2
     query.field_19 = 1 if trip == "round-trip" else 3
     if exclude_basic_economy:
         query.field_25 = 1
