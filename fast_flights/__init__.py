@@ -6,6 +6,7 @@ from .flights_impl import Airport, FlightData, Passengers, TFSData
 from .decoder import PriceInsights, PriceGraphPoint, TravelWarning
 from .schema import Flight, Result
 from .search import search_airport
+from .passenger_tokens import get_passengers_from_tfs, set_passengers_in_tfs
 from .return_flight import (
     create_return_flight_filter,
     create_return_flight_url,
@@ -18,6 +19,8 @@ from .return_flight import (
 )
 
 __all__ = [
+    "get_passengers_from_tfs",
+    "set_passengers_in_tfs",
     "Airport",
     "TFSData",
     "create_filter",
@@ -43,3 +46,4 @@ __all__ = [
     "TravelWarning",
     "GoogleFlightsErrorResponse",
 ]
+

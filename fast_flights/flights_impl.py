@@ -145,17 +145,20 @@ class Passengers:
     def __init__(
         self,
         *,
-        adults: int = 0,
+        adults: int = 1,
         children: int = 0,
         infants_in_seat: int = 0,
         infants_on_lap: int = 0,
     ):
-        assert (
-            sum((adults, children, infants_in_seat, infants_on_lap)) <= 9
-        ), "Too many passengers (> 9)"
-        assert (
-            infants_on_lap <= adults
-        ), "You must have at least one adult per infant on lap"
+        counts = (adults, children, infants_in_seat, infants_on_lap)
+        if any(isinstance(n, bool) or not isinstance(n, int) or n < 0 for n in counts):
+            raise ValueError("Passenger counts must be nonnegative integers")
+        if adults < 1:
+            raise ValueError("At least one adult is required")
+        if sum(counts) > 9:
+            raise ValueError("Too many passengers (> 9)")
+        if infants_on_lap > adults:
+            raise ValueError("You must have at least one adult per infant on lap")
 
         self.pb = []
         self.pb += [PB.Passenger.ADULT for _ in range(adults)]
@@ -164,6 +167,9 @@ class Passengers:
         self.pb += [PB.Passenger.INFANT_ON_LAP for _ in range(infants_on_lap)]
 
         self._data = (adults, children, infants_in_seat, infants_on_lap)
+
+    def asdict(self) -> dict:
+        return dict(zip(("adults", "children", "infants_in_seat", "infants_on_lap"), self._data))
 
     def attach(self, info: PB.Info) -> None:  # type: ignore
         for p in self.pb:

@@ -38,6 +38,27 @@ print(result)
 print("The price is currently", result.current_price)
 ```
 
+### Passenger counts in return and booking tokens
+
+All token builders accept the same optional `passengers=Passengers(...)` argument:
+`create_return_flight_filter`, `create_return_flight_url`, `create_booking_tfs`,
+`create_next_leg_filter`, and `create_itinerary_booking_tfs`.
+Pass the same party at every step of an itinerary. Omitting it defaults to one adult.
+
+```python
+from fast_flights import Passengers, get_passengers_from_tfs, set_passengers_in_tfs
+
+party = Passengers(adults=2, children=1, infants_in_seat=0, infants_on_lap=1)
+# Apply to an existing Google token, preserving every non-passenger field:
+corrected_tfs = set_passengers_in_tfs(existing_tfs, party)
+assert get_passengers_from_tfs(corrected_tfs).asdict() == party.asdict()
+```
+
+Counts must be nonnegative integers, include at least one adult, total at most
+nine (including lap infants), and have no more lap infants than adults.
+Children are ages 2–11; infants are under two. Google controls fare availability
+and party pricing; this library does not multiply a single-traveler quote.
+
 **Properties & usage for `Result`**:
 
 ```python

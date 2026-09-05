@@ -112,7 +112,7 @@ message ReturnFlightQuery {
   int32 query_type = 1;
   int32 step = 2;
   repeated LegWithSelection legs = 3;
-  int32 field_8 = 8;
+  repeated Passenger passengers = 8 [packed = false];
   Seat seat = 9;
   int32 field_14 = 14;
   UnknownField16 field_16 = 16;
