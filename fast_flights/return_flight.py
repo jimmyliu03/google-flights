@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date as date_type
 from typing import Optional, List, Literal, Dict, Any, Sequence
 from . import flights_pb2 as PB
+from .flights_impl import Passengers
 
 
 _SEAT_MAP = {
@@ -172,6 +173,7 @@ def _create_itinerary_tfs(
     trip: Literal["one-way", "round-trip", "multi-city"],
     seat: Literal["economy", "premium-economy", "business", "first"],
     exclude_basic_economy: bool,
+    passengers: Optional[Passengers] = None,
 ) -> str:
     _validate_routes(legs, allow_one_way=trip == "one-way")
     if len(selected_legs) > len(legs):
@@ -181,7 +183,7 @@ def _create_itinerary_tfs(
     query.query_type = 28
     # Google advances this value once for every selected itinerary leg.
     query.step = len(selected_legs) + 1
-    query.field_8 = 1
+    (passengers if passengers is not None else Passengers(adults=1)).attach(query)
     query.seat = _SEAT_MAP[seat]
     query.field_14 = 1
     if trip == "multi-city":
@@ -215,6 +217,7 @@ def create_next_leg_filter(
     trip: Literal["round-trip", "multi-city"] = "multi-city",
     seat: Literal["economy", "premium-economy", "business", "first"] = "economy",
     exclude_basic_economy: bool = False,
+    passengers: Optional[Passengers] = None,
 ) -> str:
     """Build the continuation TFS for the next unselected itinerary leg.
 
@@ -226,6 +229,7 @@ def create_next_leg_filter(
     if trip == "round-trip" and len(legs) != 2:
         raise ValueError("round-trip continuation requires exactly two legs")
     return _create_itinerary_tfs(
+        passengers=passengers,
         legs=legs,
         selected_legs=selected_legs,
         trip=trip,
@@ -240,6 +244,7 @@ def create_itinerary_booking_tfs(
     trip: Literal["one-way", "round-trip", "multi-city"] = "multi-city",
     seat: Literal["economy", "premium-economy", "business", "first"] = "economy",
     exclude_basic_economy: bool = False,
+    passengers: Optional[Passengers] = None,
 ) -> str:
     """Build a booking TFS with every itinerary leg selected.
 
@@ -251,6 +256,7 @@ def create_itinerary_booking_tfs(
     if trip == "round-trip" and len(legs) != 2:
         raise ValueError("round-trip booking requires exactly two legs")
     return _create_itinerary_tfs(
+        passengers=passengers,
         legs=legs,
         selected_legs=legs,
         trip=trip,
@@ -272,6 +278,7 @@ def create_return_flight_filter(
     connecting_segments: Optional[List[Dict[str, str]]] = None,  # For multi-leg flights
     max_stops: Optional[int] = 2,  # Maximum number of stops per leg
     exclude_basic_economy: bool = False,  # Should match the outbound search setting
+    passengers: Optional[Passengers] = None,
 ) -> str:
     """Create a TFS filter for viewing return flights after selecting an outbound flight.
 
@@ -329,7 +336,7 @@ def create_return_flight_filter(
     # Set root fields
     query.query_type = 28
     query.step = 2
-    query.field_8 = 1
+    (passengers if passengers is not None else Passengers(adults=1)).attach(query)
     query.field_14 = 1
     query.field_19 = 1
 
@@ -425,6 +432,7 @@ def create_booking_tfs(
     seat: Literal["economy", "premium-economy", "business", "first"] = "economy",
     max_stops: Optional[int] = 2,
     exclude_basic_economy: bool = False,
+    passengers: Optional[Passengers] = None,
 ) -> str:
     """Create a TFS string for Google Flights booking URL.
 
@@ -501,7 +509,7 @@ def create_booking_tfs(
     # Set root fields
     query.query_type = 28
     query.step = 2
-    query.field_8 = 1
+    (passengers if passengers is not None else Passengers(adults=1)).attach(query)
     query.field_14 = 1
     # Set field_19: 1 for round-trip, 2 for one-way
     query.field_19 = 1 if is_roundtrip else 2
@@ -609,6 +617,7 @@ def create_return_flight_url(
     outbound_flight_number: str,
     return_date: str,
     location_id: str = "/m/0d6lp",
+    passengers: Optional[Passengers] = None,
 ) -> str:
     """Create a TFS string for viewing return flights.
 
@@ -636,6 +645,7 @@ def create_return_flight_url(
         >>> url = f"https://www.google.com/travel/flights?tfs={tfs}"
     """
     return create_return_flight_filter(
+        passengers=passengers,
         outbound_date=outbound_date,
         outbound_from=outbound_from,
         outbound_to=outbound_to,
